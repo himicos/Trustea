@@ -21,7 +21,7 @@ import {
   EncryptedObject,
   NoAccessError,
 } from "@mysten/seal";
-import { SuiGrpcClient as SuiClient } from "@mysten/sui/grpc";
+import { SuiJsonRpcClient as SuiClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { fromHex, toHex } from "@mysten/sui/utils";
 

@@ -23,7 +23,7 @@
  */
 
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { TESTNET_CONFIG } from "../lib/config.js";
 import { createWalrusClient } from "../lib/walrus/client.js";
@@ -57,7 +57,7 @@ function loadKeypair(envKey: string, label: string): Ed25519Keypair {
 // Sui client
 // ---------------------------------------------------------------------------
 
-const suiClient = new SuiClient({ url: TESTNET_CONFIG.sui.rpcUrl });
+const suiClient = new SuiJsonRpcClient({ url: TESTNET_CONFIG.sui.rpcUrl, network: "testnet" });
 
 // ---------------------------------------------------------------------------
 // Walrus client
@@ -123,7 +123,7 @@ if (!ANTHROPIC_API_KEY) {
   for (const raw of rawRules) {
     const result = await translateRule(raw, ANTHROPIC_API_KEY);
     log(`\n  Input  : "${raw}"`);
-    log(`  Rule   : type=${result.rule.ruleType}, amount=${result.rule.amount}, period=${result.rule.conditionValue}ms`);
+    log(`  Rule   : type=${result.rule.ruleType}, amount=${result.rule.amount}, period=${result.rule.conditionParams.periodMs ?? "n/a"}ms`);
     log(`  Explain: ${result.explanation}`);
     log(`  Conf   : ${(result.confidence * 100).toFixed(0)}%`);
     if (result.warnings.length) log(`  ⚠️  ${result.warnings.join("; ")}`);

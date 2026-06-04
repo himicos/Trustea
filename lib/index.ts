@@ -72,6 +72,23 @@ export type {
 } from "./seal/encrypt-store.js";
 
 // ---------------------------------------------------------------------------
+// Trust reader (on-chain object fetcher/parser)
+// ---------------------------------------------------------------------------
+export {
+  fetchTrust,
+  fetchPendingDistributions,
+  fetchPendingDistribution,
+  fetchBeneficiaryNFTs,
+  trustStatusLabel,
+  TRUSTEA_PACKAGE_ID,
+} from "./trust-reader.js";
+export type {
+  TrustState,
+  RuleState,
+  PendingDistributionState,
+} from "./trust-reader.js";
+
+// ---------------------------------------------------------------------------
 // MemWal
 // ---------------------------------------------------------------------------
 export {

@@ -157,21 +157,24 @@ export async function generateProposals(
 /**
  * Build a Sui Programmable Transaction Block to execute a distribution.
  *
- * Calls the Trustea smart contract's `execute_distribution` entry function,
- * passing the trust object, beneficiary address, and amount in MIST.
+ * Calls the Trustea smart contract's `execute_distribution` entry function.
  *
- * Note: Amount is converted from dollars to MIST using a 1:1 placeholder ratio.
- * Phase 2 will integrate a Pyth oracle for live SUI/USD price conversion.
+ * Contract signature:
+ *   execute_distribution(trust: &mut Trust, dist: &mut PendingDistribution,
+ *                        clock: &Clock, ctx: &mut TxContext)
  *
- * @param proposal - An approved distribution proposal
- * @param packageId - Deployed Trustea package ID on Sui
- * @returns Unsigned Sui Transaction ready for signing by the agent keypair
+ * The PendingDistribution object ID must be obtained from the on-chain
+ * `DistributionProposed` event emitted by `propose_distribution`. It is a
+ * shared object created by that call.
  *
- * TODO Phase 2: replace dollar→MIST conversion with Pyth oracle price feed.
- * TODO Phase 2: add the Clock object as argument once the contract requires it.
+ * @param proposal               An approved distribution proposal.
+ * @param distributionObjectId   On-chain PendingDistribution shared object ID.
+ * @param packageId              Deployed Trustea package ID on Sui.
+ * @returns Unsigned Sui Transaction ready for signing by the agent keypair.
  */
 export function buildDistributionTx(
   proposal: DistributionProposal,
+  distributionObjectId: string,
   packageId: string
 ): Transaction {
   if (proposal.status !== "approved") {
@@ -180,17 +183,16 @@ export function buildDistributionTx(
     );
   }
 
-  const tx = new Transaction();
+  const CLOCK_OBJECT_ID = "0x6";
 
-  // Placeholder: 1 USD = 1_000_000 MIST (to be replaced by oracle in Phase 2)
-  const amountMist = BigInt(Math.floor(proposal.amount * 1_000_000));
+  const tx = new Transaction();
 
   tx.moveCall({
     target: `${packageId}::trust::execute_distribution`,
     arguments: [
       tx.object(proposal.trustId),
-      tx.pure.address(proposal.beneficiary),
-      tx.pure.u64(amountMist),
+      tx.object(distributionObjectId),
+      tx.object(CLOCK_OBJECT_ID),
     ],
   });
 

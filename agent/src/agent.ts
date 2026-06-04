@@ -344,18 +344,23 @@ export class TrusteeAgent {
    * The proposal must be in "approved" status and past its veto window before
    * calling this. Returns an unsigned Transaction for the agent's keypair to sign.
    *
-   * @param proposal - An approved DistributionProposal
+   * @param proposal               An approved DistributionProposal.
+   * @param distributionObjectId   On-chain PendingDistribution shared object ID
+   *                               returned by the `propose_distribution` call.
    * @returns Unsigned Sui Transaction
    * @throws If the proposal is not approved or veto window hasn't expired
    */
-  buildDistributionTx(proposal: DistributionProposal) {
+  buildDistributionTx(
+    proposal: DistributionProposal,
+    distributionObjectId: string
+  ) {
     if (!isVetoWindowExpired(proposal, Date.now())) {
       const windowDays = proposal.overridePeriodMs / 86400000;
       throw new Error(
         `Proposal ${proposal.id} is still within the ${windowDays}-day veto window. Cannot execute yet.`
       );
     }
-    return buildDistributionTx(proposal, this.config.packageId);
+    return buildDistributionTx(proposal, distributionObjectId, this.config.packageId);
   }
 
   // ---------------------------------------------------------------------------
