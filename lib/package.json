@@ -1,0 +1,30 @@
+{
+  "name": "@trustea/lib",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Walrus + Seal integration layer for Trustea on-chain family trust fund platform",
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": "./index.js",
+    "./walrus": "./walrus/client.js",
+    "./seal": "./seal/client.js",
+    "./seal/encrypt-store": "./seal/encrypt-store.js",
+    "./memwal": "./memwal/client.js",
+    "./config": "./config.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mysten/sui": "latest",
+    "@mysten/walrus": "latest",
+    "@mysten/seal": "latest",
+    "@mysten-incubation/memwal": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

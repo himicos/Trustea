@@ -1,0 +1,19 @@
+{
+  "name": "@trustea/agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/agent.ts",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "latest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "@mysten/sui": "latest",
+    "@mysten-incubation/memwal": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

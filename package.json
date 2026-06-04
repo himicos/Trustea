@@ -1,0 +1,11 @@
+{
+  "name": "trustea",
+  "private": true,
+  "workspaces": ["agent", "lib"],
+  "scripts": {
+    "build:contracts": "cd contracts && sui move build",
+    "test:contracts": "cd contracts && sui move test",
+    "build:agent": "cd agent && npm run build",
+    "dev:agent": "cd agent && npm run dev"
+  }
+}
