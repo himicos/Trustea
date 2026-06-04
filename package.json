@@ -1,6 +1,7 @@
 {
   "name": "trustea",
   "private": true,
+  "type": "module",
   "workspaces": ["agent", "lib"],
   "scripts": {
     "build:contracts": "cd contracts && sui move build",
