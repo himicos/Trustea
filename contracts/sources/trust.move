@@ -462,7 +462,11 @@ public fun propose_distribution(
     clock: &Clock,
     ctx: &mut TxContext,
 ): ID {
-    assert!(ctx.sender() == trust.agent_address, ENotAgent);
+    // Either the AI agent OR the grantor may propose distributions.
+    // Agent proposals go through the 48-hour veto window.
+    // Grantor proposals also go through the window (for audit trail consistency).
+    let caller = ctx.sender();
+    assert!(caller == trust.agent_address || caller == trust.grantor, ENotAgent);
     assert!(trust.status == STATUS_ACTIVE, ETrustNotActive);
     assert!(amount > 0, EZeroAmount);
     assert!(trust.balance.value() >= amount, EInsufficientBalance);
