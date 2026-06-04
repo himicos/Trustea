@@ -12,7 +12,7 @@
  * @module @trustea/lib/seal/encrypt-store
  */
 
-import { SuiClient } from "@mysten/sui/client";
+import { SuiGrpcClient as SuiClient } from "@mysten/sui/grpc";
 import { type TrusteaSealClient, type SessionKey } from "./client.js";
 import { type TrusteaWalrusClient } from "../walrus/client.js";
 
