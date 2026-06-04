@@ -738,3 +738,134 @@ function ulebEncode(value: number): Uint8Array {
   } while (value !== 0);
   return new Uint8Array(bytes);
 }
+
+// ---------------------------------------------------------------------------
+// Full deploy — compose entire wizard into a single PTB
+// ---------------------------------------------------------------------------
+
+/** A beneficiary to add during trust deployment. */
+export interface DeployBeneficiary {
+  address: string;
+  name: string;
+  conditionsSummary: string;
+  allocationAmount: bigint;
+  isPercentage: boolean;
+}
+
+/** Parameters for deploying a full trust in one transaction. */
+export interface FullDeployParams {
+  name: string;
+  description: string;
+  agentAddress: string;
+  depositAmount: bigint;
+  beneficiaries: DeployBeneficiary[];
+  rules: { beneficiaryAddress: string; rule: TrustRule }[];
+  walrusBlobId?: string;
+  packageId?: string;
+}
+
+/**
+ * Compose the entire create-trust wizard into a single PTB.
+ *
+ * Executes in order:
+ *   1. create_trust → returns shared Trust object
+ *   2. deposit (split from gas)
+ *   3. add_beneficiary for each beneficiary (mints NFTs)
+ *   4. add_rule for each rule
+ *   5. add_walrus_ref if a document blobId is provided
+ *
+ * The user signs ONCE for the entire deployment.
+ *
+ * Note: Because `create_trust` shares the Trust object, subsequent calls
+ * in the same PTB can reference it via the transaction result. However,
+ * Sui requires shared objects to be passed by ID (not by result) in the
+ * same PTB. So we use a two-transaction approach:
+ *   - Tx 1: create_trust (returns trust ID)
+ *   - Tx 2: deposit + add beneficiaries + add rules + add walrus ref
+ *
+ * For hackathon simplicity, this function returns TWO transactions:
+ *   [0] = create_trust
+ *   [1] = everything else (caller must extract trustId from tx1 result)
+ *
+ * In production, a custom Move function would batch all of this.
+ */
+export function buildFullDeployTxs(
+  params: FullDeployParams,
+): { createTx: Transaction; setupTx: (trustObjectId: string) => Transaction } {
+  const pkg = params.packageId ?? DEFAULT_PACKAGE_ID;
+
+  // Transaction 1: Create the trust
+  const createTx = buildCreateTrustTx(
+    params.name,
+    params.description,
+    params.agentAddress,
+    pkg,
+  );
+
+  // Transaction 2: Setup function — called after trust ID is known
+  function setupTx(trustObjectId: string): Transaction {
+    const tx = new Transaction();
+
+    // Deposit
+    if (params.depositAmount > 0n) {
+      const [coin] = tx.splitCoins(tx.gas, [tx.pure.u64(params.depositAmount)]);
+      tx.moveCall({
+        target: target(pkg, "deposit"),
+        arguments: [tx.object(trustObjectId), coin],
+      });
+    }
+
+    // Add beneficiaries
+    for (const ben of params.beneficiaries) {
+      tx.moveCall({
+        target: target(pkg, "add_beneficiary"),
+        arguments: [
+          tx.object(trustObjectId),
+          tx.pure.address(ben.address),
+          tx.pure.string(ben.name),
+          tx.pure.string(ben.conditionsSummary),
+          tx.pure.u64(ben.allocationAmount),
+          tx.pure.bool(ben.isPercentage),
+          tx.object(CLOCK_OBJECT_ID),
+        ],
+      });
+    }
+
+    // Add rules
+    for (const { beneficiaryAddress, rule } of params.rules) {
+      const ruleType = ruleTypeToU8(rule.ruleType);
+      const amount = rule.isPercentage
+        ? BigInt(Math.round(rule.amount * 100))
+        : BigInt(Math.round(rule.amount * 1_000_000_000));
+      const condValue = conditionValueFromRule(rule);
+
+      tx.moveCall({
+        target: target(pkg, "add_rule"),
+        arguments: [
+          tx.object(trustObjectId),
+          tx.pure.u8(ruleType),
+          tx.pure.address(beneficiaryAddress),
+          tx.pure.u64(amount),
+          tx.pure.bool(rule.isPercentage),
+          tx.pure.u64(condValue),
+          tx.pure.string(rule.conditionDescription),
+        ],
+      });
+    }
+
+    // Walrus document reference
+    if (params.walrusBlobId) {
+      tx.moveCall({
+        target: target(pkg, "add_walrus_ref"),
+        arguments: [
+          tx.object(trustObjectId),
+          tx.pure.string(params.walrusBlobId),
+        ],
+      });
+    }
+
+    return tx;
+  }
+
+  return { createTx, setupTx };
+}

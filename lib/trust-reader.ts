@@ -451,3 +451,50 @@ export function trustStatusLabel(status: number): "active" | "paused" | "closed"
       return "active";
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fetch trusts created by an address (for grantor sidebar)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all Trust object IDs created by a given grantor address.
+ *
+ * Queries `TrustCreated` events emitted by the Trustea contract and filters
+ * by sender. Returns an array of { trustId, name, createdAt } for sidebar
+ * rendering.
+ *
+ * @param suiClient - Connected SuiJsonRpcClient instance.
+ * @param grantorAddress - The Sui address of the grantor.
+ * @param packageId - Override Trustea package ID (default: testnet).
+ */
+export async function fetchTrustsCreatedBy(
+  suiClient: SuiJsonRpcClient,
+  grantorAddress: string,
+  packageId = TRUSTEA_PACKAGE_ID,
+): Promise<{ trustId: string; name: string; createdAt: number }[]> {
+  const events = await suiClient.queryEvents({
+    query: {
+      MoveEventType: `${packageId}::trust::TrustCreated`,
+    },
+    order: "descending",
+    limit: 50,
+  });
+
+  const trusts: { trustId: string; name: string; createdAt: number }[] = [];
+
+  for (const event of events.data) {
+    const fields = event.parsedJson as Record<string, unknown> | undefined;
+    if (!fields) continue;
+
+    const grantor = String(fields.grantor ?? "");
+    if (grantor !== grantorAddress) continue;
+
+    trusts.push({
+      trustId: String(fields.trust_id ?? ""),
+      name: String(fields.name ?? ""),
+      createdAt: Number(fields.created_at ?? 0),
+    });
+  }
+
+  return trusts;
+}
