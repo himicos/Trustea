@@ -211,6 +211,36 @@ From `_ref/MemWal/apps/`:
 
 ---
 
+## Framework Setup Notes
+
+### Next.js Config
+```ts
+// next.config.ts
+const nextConfig: NextConfig = {
+  serverExternalPackages: ['@mysten/walrus', '@mysten/walrus-wasm'],
+};
+```
+
+### Vite Config (if using Vite instead)
+```ts
+import walrusWasmUrl from '@mysten/walrus-wasm/web/walrus_wasm_bg.wasm?url';
+const client = new SuiGrpcClient({ network: 'testnet', baseUrl: '...' })
+  .$extend(walrus({ wasmUrl: walrusWasmUrl }));
+```
+
+### Walrus Sites SPA Routing
+```json
+// ws-resources.json (in site root, not uploaded)
+{
+  "routes": { "/*": "/index.html" },
+  "headers": {
+    "/index.html": { "Content-Type": "text/html; charset=utf-8" }
+  }
+}
+```
+
+---
+
 ## Build Priority Order
 
 ### Phase 1: Core (Days 1-7)
