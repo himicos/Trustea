@@ -498,3 +498,84 @@ export async function fetchTrustsCreatedBy(
 
   return trusts;
 }
+
+// ---------------------------------------------------------------------------
+// Fetch agent activity events
+// ---------------------------------------------------------------------------
+
+/** Parsed agent action event from the chain. */
+export interface AgentActivityEntry {
+  /** Numeric action type (0-4). */
+  actionType: number;
+  /** Human-readable action type label. */
+  actionLabel: string;
+  /** Description provided by the agent. */
+  description: string;
+  /** Beneficiary involved (zero address if N/A). */
+  beneficiary: string;
+  /** Amount in MIST (0 if N/A). */
+  amount: bigint;
+  /** Timestamp (ms) when the action was taken. */
+  timestampMs: number;
+  /** Sui event ID for linking. */
+  eventId: string;
+}
+
+const ACTION_LABELS: Record<number, string> = {
+  0: "Condition Check",
+  1: "Distribution Proposed",
+  2: "Distribution Executed",
+  3: "Yield Action",
+  4: "Compliance Review",
+};
+
+/**
+ * Fetch agent activity events for a specific trust.
+ *
+ * Queries `AgentAction` events emitted by the `agent_log` module.
+ *
+ * @param suiClient - Connected SuiJsonRpcClient.
+ * @param trustId - Trust object ID to filter by.
+ * @param limit - Max events to return (default 20).
+ * @param packageId - Override Trustea package ID.
+ */
+export async function fetchAgentActivity(
+  suiClient: SuiJsonRpcClient,
+  trustId: string,
+  limit = 20,
+  packageId = TRUSTEA_PACKAGE_ID,
+): Promise<AgentActivityEntry[]> {
+  const events = await suiClient.queryEvents({
+    query: {
+      MoveEventType: `${packageId}::agent_log::AgentAction`,
+    },
+    order: "descending",
+    limit: limit * 3, // over-fetch since we filter by trust_id
+  });
+
+  const entries: AgentActivityEntry[] = [];
+
+  for (const event of events.data) {
+    const fields = event.parsedJson as Record<string, unknown> | undefined;
+    if (!fields) continue;
+
+    const eventTrustId = String(fields.trust_id ?? "");
+    if (eventTrustId !== trustId) continue;
+
+    const actionType = Number(fields.action_type ?? 0);
+
+    entries.push({
+      actionType,
+      actionLabel: ACTION_LABELS[actionType] ?? `Action ${actionType}`,
+      description: String(fields.description ?? ""),
+      beneficiary: String(fields.beneficiary ?? ""),
+      amount: BigInt(String(fields.amount ?? "0")),
+      timestampMs: Number(fields.timestamp_ms ?? 0),
+      eventId: `${event.id.txDigest}:${event.id.eventSeq}`,
+    });
+
+    if (entries.length >= limit) break;
+  }
+
+  return entries;
+}

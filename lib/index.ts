@@ -79,6 +79,8 @@ export {
   fetchPendingDistributions,
   fetchPendingDistribution,
   fetchBeneficiaryNFTs,
+  fetchTrustsCreatedBy,
+  fetchAgentActivity,
   trustStatusLabel,
   TRUSTEA_PACKAGE_ID,
 } from "./trust-reader.js";
@@ -86,6 +88,7 @@ export type {
   TrustState,
   RuleState,
   PendingDistributionState,
+  AgentActivityEntry,
 } from "./trust-reader.js";
 
 // ---------------------------------------------------------------------------
@@ -102,3 +105,57 @@ export type {
   MemWalClientConfig,
   RecalledMemory,
 } from "./memwal/client.js";
+
+// ---------------------------------------------------------------------------
+// Helpers (formatting, progress, stats)
+// ---------------------------------------------------------------------------
+export {
+  formatSui,
+  formatUsd,
+  formatAddress,
+  formatRelativeTime,
+  formatDate,
+  computeMilestoneProgress,
+  computeVetoCountdown,
+  computeDashboardStats,
+  createDocumentManifest,
+  serializeManifest,
+  deserializeManifest,
+} from "./helpers.js";
+export type {
+  MilestoneProgress,
+  VetoCountdown,
+  DashboardStats,
+  TrustDocumentManifest,
+  TrustDocumentEntry,
+} from "./helpers.js";
+
+// ---------------------------------------------------------------------------
+// Transaction builders
+// ---------------------------------------------------------------------------
+export {
+  buildCreateTrustTx,
+  buildDepositTx,
+  buildAddBeneficiaryTx,
+  buildRemoveBeneficiaryTx,
+  buildAddRuleTx,
+  buildAddRuleFromTranslation,
+  buildProposeDistributionTx,
+  buildExecuteDistributionTx,
+  buildCancelDistributionTx,
+  buildAddWalrusRefTx,
+  buildPauseTrustTx,
+  buildResumeTrustTx,
+  buildCloseTrustTx,
+  buildAmendTrustTx,
+  buildFullDeployTxs,
+  RULE_TYPE_AGE,
+  RULE_TYPE_TIME,
+  RULE_TYPE_CREDENTIAL,
+  RULE_TYPE_PERIODIC,
+} from "./transactions.js";
+export type {
+  TrustRule,
+  DeployBeneficiary,
+  FullDeployParams,
+} from "./transactions.js";
