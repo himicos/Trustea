@@ -60,12 +60,27 @@ Given a plain English rule for a family trust fund, extract structured data and 
 // ---------------------------------------------------------------------------
 
 const TEST_RULES = [
+  // Basic rules
   "Release $50,000 to Alice when she turns 25",
   "Send Bob $500 every month",
   "Give Carol 10% of the trust balance each year",
-  "Pay tuition if enrolled in university",
+  // Compound rules
+  "Release funds to Alice when she graduates college AND turns 21 AND has no criminal record",
   "Distribute everything to my wife if I die",
-  "Release half the trust to Jake on January 1st 2030",
+  // Incentive trust
+  "Match Jake's earned income dollar for dollar, up to $50,000 per year",
+  // HEMS standard
+  "Pay for Alice's medical expenses up to $10,000 per year",
+  // Protective
+  "Suspend all distributions to Bob if he files for bankruptcy",
+  // Business rule
+  "Distribute 5% of annual returns only when trust balance exceeds $1 million",
+  // Spendthrift
+  "Give Carol no more than $3,000 per month for living expenses",
+  // Life event
+  "Give Alice a $100,000 wedding gift when she gets married",
+  // Generation-skipping
+  "After my death, split the remainder equally among my grandchildren",
 ];
 
 // ---------------------------------------------------------------------------
@@ -141,6 +156,12 @@ for (const rule of TEST_RULES) {
     if (params.periodMs) console.log(`  Period: ${Number(params.periodMs) / 86400000} days`);
     if (params.timestamp) console.log(`  Timestamp: ${new Date(params.timestamp as number).toISOString()}`);
     if (params.nftType) console.log(`  NFT type: ${params.nftType}`);
+    if (params.negativeCheck) console.log(`  Negative check: true (absence triggers)`);
+    if (params.conditions) console.log(`  Sub-conditions: ${(params.conditions as unknown[]).length} (${params.logicOperator ?? "AND"})`);
+    if (params.balanceMin) console.log(`  Balance min: $${Number(params.balanceMin).toLocaleString()}`);
+    if (params.incomeMatchRatio) console.log(`  Income match: ${Number(params.incomeMatchRatio) * 100}%`);
+    if (params.maxPerDistribution) console.log(`  Max/distribution: $${Number(params.maxPerDistribution).toLocaleString()}`);
+    if (params.hemsCategory) console.log(`  HEMS: ${params.hemsCategory}`);
     console.log(`  Explanation: ${explanation}`);
     if (warnings.length) console.log(`  Warnings: ${warnings.join("; ")}`);
 

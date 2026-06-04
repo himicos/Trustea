@@ -255,6 +255,69 @@ export async function checkConditions(
         break;
       }
 
+      case "compound": {
+        // Evaluate each atomic sub-condition, then combine with logic operator
+        const { conditions, logicOperator = "AND", balanceMin } = rule.conditionParams;
+        const subResults: { met: boolean; desc: string }[] = [];
+
+        if (conditions && conditions.length > 0) {
+          for (const cond of conditions) {
+            let subMet = false;
+            let subDesc = "";
+
+            if (cond.type === "age" || cond.type === "time") {
+              if (cond.timestamp != null) {
+                subMet = currentTime >= cond.timestamp;
+                subDesc = `${cond.type}: ${subMet ? "MET" : "NOT MET"} (target ${new Date(cond.timestamp).toISOString()})`;
+              } else {
+                subDesc = `${cond.type}: no timestamp`;
+              }
+            } else if (cond.type === "credential") {
+              if (cond.nftType) {
+                const mockRule = { ...rule, conditionParams: { ...rule.conditionParams, nftType: cond.nftType, negativeCheck: cond.negativeCheck } };
+                subMet = await checkCredentialCondition(mockRule, beneficiary, suiClient);
+                const mode = cond.negativeCheck ? "absence" : "presence";
+                subDesc = `credential (${mode} of ${cond.nftType}): ${subMet ? "MET" : "NOT MET"}`;
+              }
+            } else if (cond.type === "periodic") {
+              if (cond.periodMs) {
+                const mockRule = { ...rule, conditionParams: { ...rule.conditionParams, periodMs: cond.periodMs } };
+                const lastDist = lastDistributions.get(i) ?? 0;
+                subMet = checkPeriodicCondition(mockRule, lastDist, currentTime);
+                subDesc = `periodic (${Math.round(cond.periodMs / 86400000)}d): ${subMet ? "DUE" : "NOT DUE"}`;
+              }
+            } else if (cond.type === "balance_threshold") {
+              // Balance check is handled at the distribution engine level
+              subMet = true; // Deferred to distribution engine
+              subDesc = `balance threshold: deferred to distribution engine`;
+            } else {
+              subDesc = `${cond.type}: ${cond.description ?? "unknown sub-condition"}`;
+            }
+
+            subResults.push({ met: subMet, desc: subDesc });
+          }
+        }
+
+        // Apply logic operator
+        if (logicOperator === "OR") {
+          conditionMet = subResults.some((r) => r.met);
+        } else {
+          conditionMet = subResults.length > 0 && subResults.every((r) => r.met);
+        }
+
+        // Balance minimum check (if specified)
+        if (balanceMin != null && balanceMin > 0) {
+          // Agent logs this constraint; actual enforcement at distribution time
+          details = `Balance minimum: $${balanceMin.toLocaleString()} required. `;
+        } else {
+          details = "";
+        }
+
+        const subSummary = subResults.map((r) => `[${r.met ? "OK" : "--"}] ${r.desc}`).join("; ");
+        details += `Compound (${logicOperator}): ${conditionMet ? "MET" : "NOT MET"}. Sub-conditions: ${subSummary}`;
+        break;
+      }
+
       case "custom":
       default: {
         // Custom rules require manual trustee review — agent flags but does not auto-trigger
