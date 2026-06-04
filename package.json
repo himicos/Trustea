@@ -5,7 +5,10 @@
   "scripts": {
     "build:contracts": "cd contracts && sui move build",
     "test:contracts": "cd contracts && sui move test",
+    "deploy": "./scripts/deploy.sh",
     "build:agent": "cd agent && npm run build",
-    "dev:agent": "cd agent && npm run dev"
+    "dev:agent": "cd agent && npm run dev",
+    "smoke:walrus": "npx tsx scripts/walrus-smoke-test.ts",
+    "demo": "npx tsx scripts/e2e-demo.ts"
   }
 }
