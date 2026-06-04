@@ -97,7 +97,7 @@ fun parse_suffix(id: &vector<u8>): Option<u64> {
     assert!(total_len == prefix_len + 8, EInvalidKeyId);
 
     // Extract the 8-byte suffix as a BCS-encoded u64.
-    let mut suffix: vector<u8> = vector::empty();
+    let mut suffix: vector<u8> = vector[];
     let mut i = prefix_len;
     while (i < total_len) {
         suffix.push_back(*id.borrow(i));
@@ -115,32 +115,6 @@ fun parse_suffix(id: &vector<u8>): Option<u64> {
 // ---------------------------------------------------------------------------
 // Internal: combined policy check
 // ---------------------------------------------------------------------------
-
-/// Core access policy:
-///   1. Verify `id` starts with the trust's object ID prefix.
-///   2. If there is a time-lock suffix, verify current time >= timestamp.
-///   3. Verify caller is the grantor OR is a beneficiary of the trust.
-///
-/// Returns `true` if all checks pass, `false` otherwise.
-/// (The entry function `seal_approve` wraps this with an assert.)
-fun check_policy(caller: address, id: vector<u8>, trust: &Trust, clock: &Clock): bool {
-    // 1. Prefix check.
-    if (!has_trust_prefix(&id, trust)) {
-        return false
-    };
-
-    // 2. Optional time-lock check.
-    let maybe_ts = parse_suffix(&id);
-    if (maybe_ts.is_some()) {
-        let unlock_ts = *maybe_ts.borrow();
-        if (clock.timestamp_ms() < unlock_ts) {
-            return false
-        };
-    };
-
-    // 3. Whitelist check: grantor or beneficiary.
-    caller == trust.grantor() || trust.is_beneficiary(caller)
-}
 
 // ---------------------------------------------------------------------------
 // Entry function — called by the Seal SDK

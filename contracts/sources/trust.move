@@ -60,20 +60,20 @@ const OVERRIDE_PERIOD_MS: u64 = 48 * 60 * 60 * 1_000;
 // Error codes
 // ---------------------------------------------------------------------------
 
-public const ENotGrantor: u64 = 1;
-public const ENotAgent: u64 = 2;
-public const ETrustNotActive: u64 = 3;
-public const ETrustClosed: u64 = 4;
-public const EBeneficiaryNotFound: u64 = 5;
-public const EBeneficiaryAlreadyExists: u64 = 6;
-public const ERuleNotFound: u64 = 7;
-public const EOverridePeriodNotElapsed: u64 = 8;
-public const EDistributionAlreadyCancelled: u64 = 9;
-public const EDistributionAlreadyExecuted: u64 = 10;
-public const EInsufficientBalance: u64 = 11;
-public const EInvalidRuleType: u64 = 12;
-public const EZeroAmount: u64 = 13;
-public const EInvalidStatus: u64 = 14;
+const ENotGrantor: u64 = 1;
+const ENotAgent: u64 = 2;
+const ETrustNotActive: u64 = 3;
+const ETrustClosed: u64 = 4;
+const EBeneficiaryNotFound: u64 = 5;
+const EBeneficiaryAlreadyExists: u64 = 6;
+const ERuleNotFound: u64 = 7;
+const EOverridePeriodNotElapsed: u64 = 8;
+const EDistributionAlreadyCancelled: u64 = 9;
+const EDistributionAlreadyExecuted: u64 = 10;
+const EInsufficientBalance: u64 = 11;
+const EInvalidRuleType: u64 = 12;
+const EZeroAmount: u64 = 13;
+const EInvalidStatus: u64 = 14;
 
 // ---------------------------------------------------------------------------
 // Core data types
@@ -248,10 +248,10 @@ public fun create_trust(
         description,
         grantor,
         balance: balance::zero(),
-        beneficiaries: vector::empty(),
-        rules: vector::empty(),
+        beneficiaries: vector[],
+        rules: vector[],
         status: STATUS_ACTIVE,
-        walrus_blob_ids: vector::empty(),
+        walrus_blob_ids: vector[],
         created_at: now,
         agent_address,
     };
