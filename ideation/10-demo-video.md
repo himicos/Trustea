@@ -104,9 +104,9 @@
 
 **[3:15–3:30] Grantor Override (15 sec)**
 - Show: pending distribution with countdown timer
-- Nik: > "Every AI-proposed distribution goes through a configurable override window. The grantor or a designated trust protector can veto any action before it executes. The human stays in the loop."
+- Nik: > "Every AI-proposed distribution goes through a configurable override window. The grantor or trust protector can veto before it executes."
 - Click "Cancel" — distribution vetoed
-- > "That's the directed trust model — the same legal framework used by trust companies in 17 US states."
+- > "And here's the key safety property: the AI can only make things safer. It can propose distributions, tighten allocations, flag risks. But it cannot loosen constraints. Only the grantor or trust protector can resume a paused trust, raise limits, or remove rules. The smart contract enforces this asymmetry."
 
 **[3:30–3:50] Real-World Assets (20 sec)**
 - Show: RWA tokens in trust view — real estate, securities with valuations
@@ -165,6 +165,7 @@ These are accurate and powerful:
 - "The same directed trust framework used by trust companies in 17 US states."
 - "Beneficiaries can request distributions. Grantors can approve or deny."
 - "The trust knows what it owns, what it's worth, and who it belongs to — on-chain."
+- "The AI can only make things safer — propose, tighten, flag. Only a human can loosen. The contract enforces this."
 - "65 integration tests passing against live Sui testnet right now."
 
 ---
