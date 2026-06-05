@@ -14,12 +14,16 @@ $35 trillion sits in trust funds globally. Human trustees charge 1-2% of assets 
 
 Trustea automates trust fund administration using Sui's programmable object model and Walrus's persistent data layer:
 
-- **Plain English rules** — Write "Release $50k to Alice when she turns 25" → AI translates → deploys as enforceable on-chain logic
-- **AI Trustee Agent** — Monitors conditions 24/7, proposes distributions when rules are met, manages yield within risk bounds. Every decision stored permanently on Walrus via MemWal.
-- **48-hour Human Override** — Grantor can veto any AI-proposed action before execution. The human stays in the loop.
-- **Soulbound Beneficiary NFTs** — Each beneficiary receives a non-transferable NFT encoding their rules, allocation, and access rights
+- **Plain English rules** — Write "Release $50k to Alice when she turns 25" or "Pay tuition if enrolled, suspend if convicted" — the AI translates compound conditions into enforceable on-chain logic
+- **AI Trustee Agent** — Model-agnostic (Claude, GPT, local LLMs). Monitors conditions 24/7, proposes distributions, manages yield. Every decision encrypted and stored permanently on Walrus via MemWal.
+- **Configurable Human Override** — Grantor or trust protector can veto any AI-proposed action within a configurable window (default 48 hours, adjustable per trust)
+- **Revocable & Irrevocable Trusts** — Grantor chooses at creation. Irrevocable trusts lock assets permanently — the grantor gives up control, matching real-world asset protection trusts
+- **Beneficiary Self-Service** — Beneficiaries can request distributions with HEMS categories (health, education, maintenance, support). Grantor or agent approves/denies.
+- **Soulbound Beneficiary NFTs** — Non-transferable NFTs encoding rules, allocation, and access rights
+- **RWA Tokens** — Soulbound tokens representing real-world assets (real estate, securities, vehicles) held by the trust, with on-chain valuation tracking
 - **Encrypted Documents** — Trust agreements stored on Walrus, encrypted via Seal. Only authorized parties can decrypt. Time-locked documents that unlock on a specific date.
-- **Verifiable Audit Trail** — Full history of every agent decision, condition check, and fund movement. Reconstructable 50 years from now.
+- **Principal vs Income Accounting** — Tracks deposits and distributions separately, enabling "distribute income only, preserve principal" — the most common trust pattern
+- **Verifiable Audit Trail** — Every agent decision encrypted and stored on Walrus via MemWal. Reconstructable 50 years from now. The AI's reasoning is private (Seal-encrypted) and permanent.
 
 Trustea is designed to work within the **directed trust** legal framework recognized in 17+ US states — where a licensed trust company handles administrative duties while technology handles the direction advisory role.
 
@@ -28,72 +32,90 @@ Trustea is designed to work within the **directed trust** legal framework recogn
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  Sui Move Contracts                                 │
-│  ├─ Trust object (rules, balance, beneficiaries)    │
-│  ├─ BeneficiaryNFT (soulbound, programmable)        │
-│  ├─ Seal Policy (whitelist + time-lock encryption)  │
-│  └─ Agent Log (on-chain audit events)               │
-│                                                     │
-│  Walrus Stack                                       │
-│  ├─ Walrus — encrypted document storage (blobs)     │
-│  ├─ Seal — identity-based threshold encryption      │
-│  └─ MemWal — persistent AI agent memory             │
-│                                                     │
-│  AI Agent                                           │
-│  ├─ Rule Translator (English → Move parameters)     │
-│  ├─ Condition Monitor (time, credential, periodic)  │
-│  ├─ Distribution Engine (propose → veto → execute)  │
-│  └─ Yield Manager (risk-profiled DeFi allocation)   │
-└─────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  Sui Move Contracts (6 modules, 24 tests)                   │
+│  ├─ Trust — rules, balance, beneficiaries, protector,       │
+│  │          revocability, principal/income accounting        │
+│  ├─ BeneficiaryNFT — soulbound programmable identity        │
+│  ├─ Seal Policy — whitelist + time-lock encryption          │
+│  ├─ Agent Log — on-chain audit events                       │
+│  └─ RWA Token — real-world asset representation             │
+│                                                             │
+│  Walrus Stack                                               │
+│  ├─ Walrus — encrypted document storage (permanent blobs)   │
+│  ├─ Seal — identity-based threshold encryption              │
+│  └─ MemWal — persistent AI agent memory (Seal-encrypted)    │
+│                                                             │
+│  AI Agent (model-agnostic: Claude, GPT, Ollama, any LLM)   │
+│  ├─ Rule Translator — English → compound on-chain rules     │
+│  ├─ Condition Monitor — time, credential, periodic, compound│
+│  ├─ Distribution Engine — propose → veto → execute          │
+│  └─ Yield Manager — risk-profiled DeFi allocation           │
+│                                                             │
+│  TypeScript SDK (22 transaction builders)                    │
+│  ├─ Every contract function exposed as a PTB builder        │
+│  ├─ On-chain readers + parsers for all object types         │
+│  └─ Accessible to any AI agent or external system           │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Agent-Accessible Tooling
+
+The entire TypeScript SDK is designed as a **tool layer for AI agents**:
+
+- Any LLM agent (Claude, GPT, local model) can call the PTB builders to create transactions
+- Trust state readers return structured data an agent can reason about
+- The rule translator's system prompt works with any model that outputs JSON
+- MemWal memories are Seal-encrypted on Walrus — the agent's reasoning is private and verifiable, not stored on anyone's server
+- All 22 transaction builders, readers, and helpers are exported from a single `@trustea/lib` entry point
+
+An external agent framework (LangChain, CrewAI, AutoGPT) could plug into Trustea by importing the SDK and calling `buildAddRuleTx()`, `fetchTrust()`, or `translateRule()` — the infrastructure is framework-agnostic.
 
 ---
 
 ## What's Built
 
 ### Smart Contracts (Sui Move)
-- **4 modules**, 12/12 unit tests, deployed on testnet
-- `trust.move` — Trust shared object with full lifecycle (create, deposit, add beneficiaries, add rules, propose/execute/cancel distributions, pause/resume/close, amend)
+- **6 modules**, 24/24 unit tests, deployed on testnet
+- `trust.move` — Trust shared object with full lifecycle: create, deposit, add beneficiaries, add rules, propose/execute/cancel distributions, beneficiary requests (HEMS), approve/deny, pause/resume/close, amend, agent rotation, successor grantor, trust protector, revocable/irrevocable, principal vs income tracking
 - `beneficiary_nft.move` — Soulbound NFTs (key-only, no store) with wallet Display metadata
 - `seal_policy.move` — Combined whitelist + time-lock Seal access policy
 - `agent_log.move` — On-chain audit trail for all AI agent actions
+- `rwa_token.move` — Soulbound real-world asset tokens with valuation tracking
 
-**Testnet Package:** `0x6dd9f544633cc3dd119f045aa45711d1bc90158cf2059aa1bbba2967697d7079`
+**Testnet Package:** `0x99918b1c3d33c75a0f8935713f5aa2ef82d8ef63d3352dfd0d320f69a1e0408e`
 
-### Integration Tests — 56/56 PASS on Live Testnet
+### Integration Tests — Verified on Live Testnet
 
-| Test | Result |
-|------|--------|
-| Trust lifecycle (create, deposit, beneficiary, rule, propose, cancel, pause, resume, amend) | PASS |
-| Soulbound BeneficiaryNFT minted + verified in wallet | PASS |
-| Walrus document store + retrieve round-trip | PASS |
-| Walrus blob ID anchored on-chain in trust object | PASS |
-| Seal encryption against real testnet key server | PASS |
-| Seal access control (non-beneficiary correctly denied) | PASS |
-| MemWal remember (4 memories across 2 namespaces on Walrus) | PASS |
-| MemWal semantic recall (distance-ranked results) | PASS |
-| AI Rule Translation (6 rule types: age, time, credential, periodic, custom) | PASS |
-| Condition monitor (rules evaluated against live chain state) | PASS |
-| Distribution engine (proposals generated from triggered conditions) | PASS |
-| Yield manager (4 risk profiles: passive, conservative, moderate, aggressive) | PASS |
-| Trust state reader (all fields parsed from live Sui object) | PASS |
-| UI helpers (formatSui, milestone progress, veto countdown, dashboard stats) | PASS |
+| Component | Tests | Status |
+|-----------|-------|--------|
+| Trust lifecycle (create, deposit, beneficiary, rule, propose, cancel, pause, resume, amend) | 24 Move + 56 integration | PASS |
+| Soulbound BeneficiaryNFT minted + verified in wallet | Integration | PASS |
+| Beneficiary request + approve/deny flow | Move | PASS |
+| Trust protector veto, pause/resume, agent rotation | Move | PASS |
+| Irrevocable trust (close keeps balance, grantor can't amend) | Move | PASS |
+| Principal vs income accounting | Move | PASS |
+| Walrus document store + retrieve round-trip | Integration | PASS |
+| Seal encryption against real testnet key server | Integration | PASS |
+| Seal access control (non-beneficiary correctly denied) | Integration | PASS |
+| MemWal remember + semantic recall (4 memories, 2 namespaces) | Integration | PASS |
+| AI Rule Translation (12 trust fund patterns, local + cloud) | Integration | PASS |
+| Condition monitor (compound rules, AND/OR logic) | Integration | PASS |
+| Distribution engine + yield manager (4 risk profiles) | Integration | PASS |
 
 ### TypeScript SDK (`lib/`)
-- **14 transaction builders** for every contract function
-- Full deploy composer — create trust + deposit + beneficiaries + rules in minimal transactions
-- On-chain readers — trust state, beneficiary NFTs, agent activity events, grantor's trusts
+- **22 transaction builders** for every contract function including beneficiary requests, RWA tokens, agent rotation, and full deploy composer
+- On-chain readers for Trust, PendingDistribution, DistributionRequest, BeneficiaryNFT, agent activity events
 - Seal + Walrus pipeline — encrypt, store, retrieve, decrypt
-- UI helpers — SUI formatting, address truncation, milestone progress bars, veto countdowns, dashboard aggregates
-- Document manifest system for encrypted file metadata
+- Principal vs income computation (`computeIncomeBalance`)
+- UI helpers — SUI formatting, address truncation, milestone progress, veto countdowns, HEMS categories, dashboard aggregates
 
 ### AI Agent (`agent/`)
-- **Rule Translator** — Plain English to structured on-chain rules with confidence scoring
-- **Condition Monitor** — Evaluates time-based, credential-based, and periodic conditions
-- **Distribution Engine** — Generates proposals, builds correct Sui transactions
-- **Yield Manager** — Risk-profiled DeFi allocation strategies
-- **TrusteeAgent** — Orchestrator that runs monitoring cycles and logs all decisions to MemWal
+- **Rule Translator** — Model-agnostic. Tested with Claude API and local gemma3:27b. Handles 12 real-world trust fund patterns: age, time, credential, periodic, compound (AND/OR), HEMS, incentive (income matching), protective (bankruptcy/felony suspension), spendthrift caps, life events, generation-skipping, RWA-conditional
+- **Condition Monitor** — Evaluates atomic and compound conditions with AND/OR logic. Credential checks via on-chain NFT ownership queries. Balance threshold checks.
+- **Distribution Engine** — Generates proposals from triggered conditions, builds correct PTBs with the actual contract signature
+- **Yield Manager** — 4 risk profiles (passive, conservative, moderate, aggressive) with allocation ratios and rebalancing
+- **TrusteeAgent orchestrator** — `runCycle()` monitors, proposes, allocates, and logs everything to MemWal (Seal-encrypted on Walrus)
 
 ---
 
@@ -101,62 +123,72 @@ Trustea is designed to work within the **directed trust** legal framework recogn
 
 | Technology | What it does in Trustea |
 |-----------|------------------------|
-| **Sui Move** | Trust objects as shared programmable state. Soulbound NFTs for beneficiary identity. On-chain rules with automatic enforcement. |
-| **Walrus** | Encrypted trust documents (agreements, amendments, identity proofs) stored as blobs. Permanent, retrievable for decades. |
-| **Seal** | Beneficiary-only document access. Time-locked encryption that unlocks on a specific date. Whitelist policy enforced by Move contract. |
-| **MemWal** | AI agent's persistent memory. Every condition check, distribution proposal, yield action, and compliance review stored on Walrus. Semantic recall across sessions. |
+| **Sui Move** | Trust objects as shared programmable state. Soulbound NFTs for beneficiary identity. RWA tokens for real-world assets. On-chain rules with configurable enforcement. Principal/income accounting. |
+| **Walrus** | Encrypted trust documents (agreements, amendments, identity proofs, RWA documentation) stored as blobs. Permanent, retrievable for decades. Annual trust reports generated by the agent. |
+| **Seal** | Beneficiary-only document access. Time-locked encryption (documents readable only after a date). Agent memory encryption — the AI's reasoning is private on Walrus. Whitelist policy enforced by Move contract. |
+| **MemWal** | AI agent's persistent memory. Every condition check, distribution proposal, yield action, compliance review, and beneficiary request evaluation stored as Seal-encrypted memories on Walrus. Semantic recall across sessions — the agent builds context over years of trust administration. |
 
 ---
 
-## Cost Comparison
+## Trust Fund Features
 
-| | Traditional Trust | Trustea |
-|---|---|---|
-| Setup | $5,000 – $50,000 | ~$2 (gas fees) |
+| Feature | Traditional Trust | Trustea |
+|---------|------------------|---------|
+| Setup cost | $5,000 – $50,000 | ~$2 (gas fees) |
 | Annual fee | 0.5 – 1.5% AUM | ~$0 |
+| Revocable/irrevocable | Paper election | On-chain enforcement |
+| Trust protector | Hired separately | On-chain role with veto power |
+| Successor trustee | Documented in paper | On-chain with key rotation |
+| Beneficiary requests | Phone calls and letters | Self-service on-chain (HEMS) |
+| Principal vs income | Manual accounting | Automatic on-chain tracking |
+| RWA inventory | Paper schedule | Soulbound tokens with valuations |
+| Compound rules | Lawyer interpretation | AI + AND/OR logic on-chain |
+| Audit trail | Filing cabinet | MemWal on Walrus (encrypted, permanent) |
 | Transparency | Opaque | On-chain + Walrus |
-| Audit trail | Paper files | Permanent (MemWal on Walrus) |
-| Rule changes | Weeks | Minutes |
-| Privacy | Lawyers see everything | Seal encryption |
+| Privacy | Lawyers see everything | Seal (only authorized parties) |
 | Duration | Human lifespan | Perpetual |
+| 30-year cost on $5M | $150,000 – $450,000+ | $15,000 – $60,000 |
 
 ---
 
 ## Project Structure
 
 ```
-contracts/              Sui Move (4 modules, 12 tests)
+contracts/              Sui Move (6 modules, 24 tests)
   sources/
-    trust.move              Trust object + full lifecycle
+    trust.move              Trust object + full lifecycle + requests
     beneficiary_nft.move    Soulbound beneficiary NFTs
     seal_policy.move        Whitelist + time-lock encryption
     agent_log.move          On-chain agent audit trail
+    rwa_token.move          Real-world asset tokens
   tests/
-    trust_tests.move        Integration tests
+    trust_tests.move        24 integration tests
 
 lib/                    TypeScript SDK
   config.ts                 Network configuration
-  transactions.ts           14 PTB builders + deploy composer
-  trust-reader.ts           On-chain object readers
-  helpers.ts                Formatters, progress, stats
+  transactions.ts           22 PTB builders + deploy composer
+  trust-reader.ts           On-chain object readers + parsers
+  helpers.ts                Formatters, progress, income, stats
   walrus/client.ts          Walrus REST client
   seal/client.ts            Seal encrypt/decrypt
   seal/encrypt-store.ts     Encrypt-then-store pipeline
   memwal/client.ts          MemWal persistent memory
 
-agent/                  AI Trustee Agent
+agent/                  AI Trustee Agent (model-agnostic)
   src/
     agent.ts                Orchestrator (runCycle)
-    rule-translator.ts      English → on-chain rules
-    condition-monitor.ts    Condition evaluation
+    rule-translator.ts      English → compound rules (12 patterns)
+    condition-monitor.ts    Atomic + compound condition evaluation
     distribution-engine.ts  Proposal + transaction building
     yield-manager.ts        DeFi allocation strategies
 
 scripts/                Testing + deployment
-  integration-test.ts       56/56 PASS on testnet
+  integration-test.ts       Full testnet integration suite
   test-memwal.ts            MemWal remember/recall
-  test-seal-decrypt.ts      Seal access control
+  test-seal-decrypt.ts      Seal access control verification
+  test-rule-translator-local.ts  12 trust fund patterns (local LLM)
   walrus-smoke-test.ts      Walrus round-trip
+  setup-memwal-account.ts   MemWal account + delegate key setup
   deploy.sh                 Build + test + publish
 ```
 
@@ -165,17 +197,18 @@ scripts/                Testing + deployment
 ## Running
 
 ```bash
-# Smart contract tests
+# Smart contract tests (24/24)
 cd contracts && sui move test
 
 # Full integration test (requires funded testnet wallet)
 npx tsx scripts/integration-test.ts
 
 # Individual tests
-npx tsx scripts/walrus-smoke-test.ts
-npx tsx scripts/seal-test.ts
-npx tsx scripts/test-memwal.ts
-npx tsx scripts/test-rule-translator-local.ts
+npx tsx scripts/walrus-smoke-test.ts           # Walrus store/retrieve
+npx tsx scripts/seal-test.ts                   # Seal encryption
+npx tsx scripts/test-seal-decrypt.ts           # Seal access control
+npx tsx scripts/test-memwal.ts                 # MemWal remember/recall
+npx tsx scripts/test-rule-translator-local.ts  # 12 rule patterns (needs ollama)
 ```
 
 ---
@@ -187,8 +220,8 @@ npx tsx scripts/test-rule-translator-local.ts
 | Smart Contracts | Sui Move (edition 2024) |
 | Document Storage | Walrus |
 | Encryption | Seal |
-| AI Memory | MemWal (Walrus Memory) |
-| AI Engine | Claude / local LLM |
+| AI Memory | MemWal (Walrus Memory) — Seal-encrypted on Walrus |
+| AI Engine | Model-agnostic (Claude, GPT, Ollama, any JSON-capable LLM) |
 | Frontend | Next.js, @mysten/dapp-kit |
 | SDK | TypeScript, @mysten/sui |
 
