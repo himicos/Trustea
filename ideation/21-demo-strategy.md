@@ -107,13 +107,17 @@ Don't create everything from scratch on camera. **Pre-populate** a trust with 3 
 - Show semantic recall results with distances
 - "The agent remembers. Across sessions, across months. It builds context over time."
 
-**[3:35–3:50] Yield Management (15 sec)**
-- Show yield strategy panel: conservative profile, Scallop + SUI staking allocation
-- "The trust doesn't just sit there. The agent manages funds within risk bounds the grantor sets."
+**[3:35–3:55] Encrypted Memory (20 sec) — NEW KILLER MOMENT**
+- Show the privacy architecture (text overlay or diagram):
+- "Here's what makes this different from every other trust platform:"
+- "Every decision the agent makes — every condition check, every distribution proposal, every yield action — is Seal-encrypted via MemWal before it's stored on Walrus."
+- "The permanent record of your trust's administration is private. Only authorized parties with the delegate key can read it."
+- "Traditional trusts? Lawyers, accountants, trust companies — they all have permanent access to everything. Ours? Ciphertext on Walrus. Verifiable that it exists, but private by default."
+- This is the second jaw-drop moment after the AI translation.
 
-**[3:50–4:00] Quick Architecture Flash (10 sec)**
+**[3:55–4:05] Quick Architecture Flash (10 sec)**
 - Show the architecture diagram (full screen, 3 seconds)
-- "Sui for rules. Walrus for documents. Seal for privacy. MemWal for memory."
+- "Sui for rules. Walrus for documents. Seal for privacy. MemWal for encrypted agent memory. Local inference for zero exposure."
 
 ---
 
