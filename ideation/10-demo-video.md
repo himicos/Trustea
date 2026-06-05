@@ -15,30 +15,31 @@
 
 **[0:00–0:05] COLD OPEN — No intro, straight in**
 - Nik walking, city behind him, fast energy, camera follows:
-  > "Here's the problem with trust funds."
+  > "I build systems for a living. And when I see an inefficient system — I can't unsee it."
 
-**[0:05–0:18] THE CLIENT'S PAIN**
-- Still walking, quick cuts of paperwork, offices, filing cabinets:
-  > "Your family sets one up. The rules are simple — release the money when she turns 25, pay his tuition if he's enrolled, distribute 10% a year. Simple rules."
-  > "But the person enforcing those rules — the trustee — charges 1 to 2 percent of everything. Every year. For decades."
-- Nik stops. Faces camera:
-  > "$15,000 to $30,000 a year on a million-dollar trust. For checking a calendar and making a phone call."
+**[0:05–0:20] THE OUTSIDER'S VIEW**
+- Still walking, quick cuts of glass towers, suits, law offices:
+  > "I don't come from a trust fund family. Where I grew up, this concept doesn't even exist. But I talk to the people who live in it."
+  > "And here's what they tell me: their family set up a trust. The rules are simple. Release the money when she turns 25. Pay tuition if he's enrolled. Distribute 10% a year."
+  > "Simple rules. Conditions in, actions out."
+- Nik stops. Half-smile, direct to camera:
+  > "And then someone charges $30,000 a year to check a calendar and make a phone call."
 
-**[0:18–0:28] THE OTHER SIDE**
-- Walking again, different angle:
-  > "And for the beneficiary, it's worse. You're left in the dark. You call your trustee, no update. You need money for an emergency — wait 3 months. Your own money, and someone else decides when you get it."
+**[0:20–0:30] THE SCALE**
+- Walking again, faster:
+  > "For the beneficiary, it's worse. Your own money, someone else decides when you see it. You call, no update. You need funds for an emergency — wait three months."
+- Stops:
+  > "$13 trillion in US private trusts. $124 trillion transferring between generations right now. A $15 billion administration industry. Paper. Phone calls. Filing cabinets."
 
-**[0:28–0:38] THE STAT — Let it land**
-- Nik stops again. Direct to camera. Slower:
-  > "$13 trillion sits in US private trusts right now. $124 trillion is transferring between generations. The administration of this wealth — a $15 billion industry — still runs on paper, phone calls, and filing cabinets."
-- Beat.
-  > "Every industry this broken eventually got reinvented."
+**[0:30–0:38] THE RECOGNITION**
+- Nik, walking, lighter energy — the builder's excitement:
+  > "When I looked at this I started laughing. Not because it's funny — because I recognized it. It's a rule engine. Condition monitoring. Scheduled distributions. Audit logging. I build these systems every day. The entire administration layer is just... software that nobody wrote yet."
 
 **[0:38–0:50] ANNA + THE BRIDGE**
 - Anna appears, walking from another direction, they meet:
-- Anna: > "The legal structure behind trusts is solid. It's been working for centuries. What hasn't changed is the administration layer — the part that monitors conditions, releases funds, keeps records."
-- Nik: > "That part is just rules. And rules are what smart contracts do."
-- Anna: > "So we built the infrastructure to automate it."
+- Anna: > "The legal structure behind trusts is solid. Centuries of case law. That's not what needs fixing."
+- Nik: > "What needs fixing is the administration — the expensive human layer between the rules and the money."
+- Anna: > "So we built the technology to replace that layer. Not the law. The paperwork."
 
 ### ACT 2: TRUSTEA (0:50–1:15)
 
