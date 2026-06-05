@@ -135,8 +135,9 @@ An external agent framework (LangChain, CrewAI, AutoGPT) could plug into Trustea
 
 | Feature | Traditional Trust | Trustea |
 |---------|------------------|---------|
-| Setup cost | $1,000 – $10,000 (attorney) | ~$2 (gas fees) |
-| Annual fee | 0.75 – 1.5% AUM ($15k–$30k on $1M) | ~$0 |
+| Legal setup | $1,000 – $10,000 (attorney) | Same (still needed) |
+| Admin onboarding | $2,000 – $5,000 | ~$2 (gas fees) |
+| Annual administration | 0.75 – 1.5% AUM ($15k–$30k on $1M) | Near $0 (agent + chain) |
 | Revocable/irrevocable | Paper election | On-chain enforcement |
 | Trust protector | Hired separately | On-chain role with veto power |
 | Successor trustee | Documented in paper | On-chain with key rotation |
