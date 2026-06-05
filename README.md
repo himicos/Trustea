@@ -8,7 +8,7 @@ Trustea replaces the expensive, opaque administration layer inside family trusts
 
 ## The Problem
 
-$35 trillion sits in trust funds globally. Human trustees charge 1-2% of assets annually — $5,000-$50,000+/year — for work a program can do in milliseconds. The process is opaque, paper-based, and hasn't evolved since the 1900s.
+$13 trillion sits in US private trusts today, with $124 trillion transferring between generations through 2048. The administration of these trusts — a $15.5 billion industry — runs on paper, phone calls, and fees of 1-2% of assets annually. That's $15,000-$30,000/year on a $1M trust. Trust filings jumped 15% in a single year as boomers begin the largest wealth transfer in history. The industry hasn't changed in decades.
 
 ## The Solution
 
@@ -135,8 +135,8 @@ An external agent framework (LangChain, CrewAI, AutoGPT) could plug into Trustea
 
 | Feature | Traditional Trust | Trustea |
 |---------|------------------|---------|
-| Setup cost | $5,000 – $50,000 | ~$2 (gas fees) |
-| Annual fee | 0.5 – 1.5% AUM | ~$0 |
+| Setup cost | $1,000 – $10,000 (attorney) | ~$2 (gas fees) |
+| Annual fee | 0.75 – 1.5% AUM ($15k–$30k on $1M) | ~$0 |
 | Revocable/irrevocable | Paper election | On-chain enforcement |
 | Trust protector | Hired separately | On-chain role with veto power |
 | Successor trustee | Documented in paper | On-chain with key rotation |
