@@ -11,49 +11,51 @@
 
 ## Shot-by-Shot Breakdown
 
-### ACT 1: THE WORLD (0:00–0:45)
+### ACT 1: THE PROBLEM (0:00–0:50)
 
-**[0:00–0:10] HOOK — Financial District Energy**
-- Drone/wide shot: financial district skyline
-- Quick cuts: busy people, glass towers, passing of time
-- Time-lapse: day→night→day
-- *No voiceover. Just music + ambient city sound.*
+**[0:00–0:05] COLD OPEN — No intro, straight in**
+- Nik walking, city behind him, fast energy, camera follows:
+  > "Here's the problem with trust funds."
 
-**[0:10–0:25] TRUST FUNDS — The Invisible Machine**
-- Voiceover (Nik, walking through city, full body, fast pace):
-  > "$13 trillion sits in US private trusts right now. $124 trillion is transferring between generations over the next two decades. Rules. Conditions. Gatekeepers."
-- Quick cuts: paperwork, lawyer offices, signatures, family photos aging
-  > "Release the money when she turns 25. Pay tuition if he's enrolled. Distribute 10% annually. Suspend if convicted."
+**[0:05–0:18] THE CLIENT'S PAIN**
+- Still walking, quick cuts of paperwork, offices, filing cabinets:
+  > "Your family sets one up. The rules are simple — release the money when she turns 25, pay his tuition if he's enrolled, distribute 10% a year. Simple rules."
+  > "But the person enforcing those rules — the trustee — charges 1 to 2 percent of everything. Every year. For decades."
+- Nik stops. Faces camera:
+  > "$15,000 to $30,000 a year on a million-dollar trust. For checking a calendar and making a phone call."
 
-**[0:25–0:35] THE PROBLEM — Pattern Break #1**
-- Camera stops. Nik faces camera directly. Slower:
-  > "The people administering these rules charge 1 to 2 percent of everything. Every year. For decades. $15,000 to $30,000 a year on a million-dollar trust. For work that is fundamentally rule-based."
+**[0:18–0:28] THE OTHER SIDE**
+- Walking again, different angle:
+  > "And for the beneficiary, it's worse. You're left in the dark. You call your trustee, no update. You need money for an emergency — wait 3 months. Your own money, and someone else decides when you get it."
+
+**[0:28–0:38] THE STAT — Let it land**
+- Nik stops again. Direct to camera. Slower:
+  > "$13 trillion sits in US private trusts right now. $124 trillion is transferring between generations. The administration of this wealth — a $15 billion industry — still runs on paper, phone calls, and filing cabinets."
 - Beat.
-  > "The trust administration industry is a $15 billion market that hasn't changed in decades."
+  > "Every industry this broken eventually got reinvented."
 
-**[0:35–0:45] THE SHIFT**
-- Energy picks up. Walking again:
-  > (Anna, walking from opposite direction, meets Nik):
-  > "Smart contracts. AI agents. Encrypted verifiable storage. The technology to automate the administration layer exists. Nobody built it for trust funds. Until now."
+**[0:38–0:50] ANNA + THE BRIDGE**
+- Anna appears, walking from another direction, they meet:
+- Anna: > "The legal structure behind trusts is solid. It's been working for centuries. What hasn't changed is the administration layer — the part that monitors conditions, releases funds, keeps records."
+- Nik: > "That part is just rules. And rules are what smart contracts do."
+- Anna: > "So we built the infrastructure to automate it."
 
-### ACT 2: TRUSTEA (0:45–1:15)
+### ACT 2: TRUSTEA (0:50–1:15)
 
-**[0:45–0:55] NAME DROP + Pattern Break #2**
-- Both stop walking. Face camera together.
+**[0:50–0:58] NAME DROP**
+- Both face camera together. City behind them.
 - Nik: > "Trustea."
 - Anna: > "Pronounced like trustee. That's the role it fills."
 - Logo animation (clean, minimal)
 
-Note: "fills" not "replaces" — the legal trustee still exists. Trustea fills the administration function.
-
-**[0:55–1:15] THE 20-SECOND PITCH**
-- Fast alternating between Nik and Anna:
-  > "Trust fund administration infrastructure on Sui."
-  > "Grantors write rules in plain English."
-  > "An AI agent translates them into smart contract logic."
-  > "It monitors conditions, proposes distributions, manages yield."
-  > "A human can override any AI decision within a configurable window."
-  > "Trust documents encrypted on Walrus. Agent memory permanent and private."
+**[0:58–1:15] HOW IT WORKS — fast, dense**
+- Fast alternating, finishing each other's sentences:
+  > "You write trust rules in plain English."
+  > "An AI translates them into smart contract parameters."
+  > "The rules deploy on Sui. An AI agent monitors conditions around the clock."
+  > "When a condition is met, the agent proposes a distribution."
+  > "The grantor has a configurable window to override. The human stays in the loop."
+  > "Trust documents are encrypted on Walrus. The agent's memory — every decision, every check — is encrypted and permanent."
   > "The legal structure stays. The expensive administration layer doesn't."
 
 ### ACT 3: LIVE DEMO (1:15–3:50)
