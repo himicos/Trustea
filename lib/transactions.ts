@@ -116,17 +116,28 @@ function conditionValueFromRule(rule: TrustRule): bigint {
  * Build a PTB that calls `trustea::trust::create_trust`.
  *
  * Signature:
- *   create_trust(name: String, description: String, agent_address: address, clock: &Clock, ctx: &mut TxContext)
+ *   create_trust(name: String, description: String, agent_address: address,
+ *                override_period_ms: u64, is_revocable: bool,
+ *                successor_grantor: Option<address>, trust_protector: Option<address>,
+ *                clock: &Clock, ctx: &mut TxContext)
  *
- * @param name            Human-readable trust name.
- * @param description     Trust purpose / description.
- * @param agentAddress    Sui address authorised to propose distributions.
- * @param packageId       Trustea package ID (defaults to testnet).
+ * @param name               Human-readable trust name.
+ * @param description        Trust purpose / description.
+ * @param agentAddress       Sui address authorised to propose distributions.
+ * @param overridePeriodMs   Override period in ms (0 = use 48hr default).
+ * @param isRevocable        Whether grantor can close/withdraw.
+ * @param successorGrantor   Optional successor grantor address (null = none).
+ * @param trustProtector     Optional trust protector address (null = none).
+ * @param packageId          Trustea package ID (defaults to testnet).
  */
 export function buildCreateTrustTx(
   name: string,
   description: string,
   agentAddress: string,
+  overridePeriodMs: bigint = 0n,
+  isRevocable: boolean = true,
+  successorGrantor: string | null = null,
+  trustProtector: string | null = null,
   packageId: string = DEFAULT_PACKAGE_ID
 ): Transaction {
   const tx = new Transaction();
@@ -137,6 +148,10 @@ export function buildCreateTrustTx(
       tx.pure.string(name),
       tx.pure.string(description),
       tx.pure.address(agentAddress),
+      tx.pure.u64(overridePeriodMs),
+      tx.pure.bool(isRevocable),
+      tx.pure.option("address", successorGrantor ?? undefined),
+      tx.pure.option("address", trustProtector ?? undefined),
       tx.object(CLOCK_OBJECT_ID),
     ],
   });
@@ -740,6 +755,296 @@ function ulebEncode(value: number): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
+// 15. request_distribution (beneficiary self-service)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::trust::request_distribution`.
+ *
+ * Signature:
+ *   request_distribution(trust: &Trust, amount: u64, reason: String,
+ *                        category: String, clock: &Clock, ctx: &mut TxContext)
+ *
+ * Must be called by a registered beneficiary of the trust.
+ *
+ * @param trustObjectId  Shared Trust object ID.
+ * @param amount         Requested amount in MIST.
+ * @param reason         Human-readable reason for the request.
+ * @param category       HEMS category: "health" | "education" | "maintenance" | "support" | "other".
+ * @param packageId      Trustea package ID (defaults to testnet).
+ */
+export function buildRequestDistributionTx(
+  trustObjectId: string,
+  amount: bigint,
+  reason: string,
+  category: string,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(packageId, "request_distribution"),
+    arguments: [
+      tx.object(trustObjectId),
+      tx.pure.u64(amount),
+      tx.pure.string(reason),
+      tx.pure.string(category),
+      tx.object(CLOCK_OBJECT_ID),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
+// 16. approve_request (grantor/agent approves beneficiary request)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::trust::approve_request`.
+ *
+ * Signature:
+ *   approve_request(trust: &mut Trust, request: &mut DistributionRequest,
+ *                   clock: &Clock, ctx: &mut TxContext): ID
+ *
+ * Creates a PendingDistribution that goes through the normal override flow.
+ *
+ * @param trustObjectId    Shared Trust object ID.
+ * @param requestObjectId  Shared DistributionRequest object ID.
+ * @param packageId        Trustea package ID (defaults to testnet).
+ */
+export function buildApproveRequestTx(
+  trustObjectId: string,
+  requestObjectId: string,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(packageId, "approve_request"),
+    arguments: [
+      tx.object(trustObjectId),
+      tx.object(requestObjectId),
+      tx.object(CLOCK_OBJECT_ID),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
+// 17. deny_request (grantor denies beneficiary request)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::trust::deny_request`.
+ *
+ * Signature:
+ *   deny_request(trust: &Trust, request: &mut DistributionRequest, ctx: &mut TxContext)
+ *
+ * @param trustObjectId    Shared Trust object ID.
+ * @param requestObjectId  Shared DistributionRequest object ID.
+ * @param packageId        Trustea package ID (defaults to testnet).
+ */
+export function buildDenyRequestTx(
+  trustObjectId: string,
+  requestObjectId: string,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(packageId, "deny_request"),
+    arguments: [
+      tx.object(trustObjectId),
+      tx.object(requestObjectId),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
+// 18. set_agent_address (rotate agent — grantor or trust protector)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::trust::set_agent_address`.
+ *
+ * Signature:
+ *   set_agent_address(trust: &mut Trust, new_agent: address, ctx: &mut TxContext)
+ *
+ * Can be called by the grantor or the trust protector.
+ *
+ * @param trustObjectId   Shared Trust object ID.
+ * @param newAgentAddress New AI agent Sui address.
+ * @param packageId       Trustea package ID (defaults to testnet).
+ */
+export function buildSetAgentAddressTx(
+  trustObjectId: string,
+  newAgentAddress: string,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(packageId, "set_agent_address"),
+    arguments: [
+      tx.object(trustObjectId),
+      tx.pure.address(newAgentAddress),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
+// 19. set_successor_grantor
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::trust::set_successor_grantor`.
+ *
+ * Signature:
+ *   set_successor_grantor(trust: &mut Trust, new_successor: Option<address>, ctx: &mut TxContext)
+ *
+ * Only the grantor may call this. Pass null to clear the successor.
+ *
+ * @param trustObjectId    Shared Trust object ID.
+ * @param successorAddress New successor address, or null to clear.
+ * @param packageId        Trustea package ID (defaults to testnet).
+ */
+export function buildSetSuccessorGrantorTx(
+  trustObjectId: string,
+  successorAddress: string | null,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(packageId, "set_successor_grantor"),
+    arguments: [
+      tx.object(trustObjectId),
+      tx.pure.option("address", successorAddress ?? undefined),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
+// 20. mint_rwa_token (RWA token module)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::rwa_token::mint_rwa_token`.
+ *
+ * Signature:
+ *   mint_rwa_token(trust_id: ID, asset_type: String, description: String,
+ *                  estimated_value_usd: u64, documentation_blob_id: String,
+ *                  clock: &Clock, ctx: &mut TxContext)
+ *
+ * Mints a soulbound RWA token transferred to the caller (grantor).
+ *
+ * @param trustId               Trust object ID this RWA belongs to.
+ * @param assetType             Asset category: "real_estate" | "securities" | "vehicle" | "business_interest" | "other".
+ * @param description           Human-readable description of the asset.
+ * @param estimatedValueUsd     Estimated USD value (u64).
+ * @param documentationBlobId  Walrus blob ID for encrypted asset docs.
+ * @param packageId             Trustea package ID (defaults to testnet).
+ */
+export function buildMintRWATokenTx(
+  trustId: string,
+  assetType: string,
+  description: string,
+  estimatedValueUsd: bigint,
+  documentationBlobId: string,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: `${packageId}::rwa_token::mint_rwa_token`,
+    arguments: [
+      tx.pure.id(trustId),
+      tx.pure.string(assetType),
+      tx.pure.string(description),
+      tx.pure.u64(estimatedValueUsd),
+      tx.pure.string(documentationBlobId),
+      tx.object(CLOCK_OBJECT_ID),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
+// 21. update_valuation (RWA token module)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::rwa_token::update_valuation`.
+ *
+ * Signature:
+ *   update_valuation(token: &mut RWAToken, new_value: u64, clock: &Clock, ctx: &mut TxContext)
+ *
+ * Can be called by the holder (grantor). Token must be owned by the caller.
+ *
+ * @param tokenObjectId  RWAToken object ID (owned by caller).
+ * @param newValueUsd    New estimated USD value.
+ * @param packageId      Trustea package ID (defaults to testnet).
+ */
+export function buildUpdateRWAValuationTx(
+  tokenObjectId: string,
+  newValueUsd: bigint,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: `${packageId}::rwa_token::update_valuation`,
+    arguments: [
+      tx.object(tokenObjectId),
+      tx.pure.u64(newValueUsd),
+      tx.object(CLOCK_OBJECT_ID),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
+// 22. burn_rwa_token (RWA token module)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a PTB that calls `trustea::rwa_token::burn_rwa_token`.
+ *
+ * Signature:
+ *   burn_rwa_token(token: RWAToken, ctx: &TxContext)
+ *
+ * Burns the soulbound RWA token. Caller must be the holder (grantor).
+ *
+ * @param tokenObjectId  RWAToken object ID (owned by caller).
+ * @param packageId      Trustea package ID (defaults to testnet).
+ */
+export function buildBurnRWATokenTx(
+  tokenObjectId: string,
+  packageId: string = DEFAULT_PACKAGE_ID
+): Transaction {
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: `${packageId}::rwa_token::burn_rwa_token`,
+    arguments: [
+      tx.object(tokenObjectId),
+    ],
+  });
+
+  return tx;
+}
+
+// ---------------------------------------------------------------------------
 // Full deploy — compose entire wizard into a single PTB
 // ---------------------------------------------------------------------------
 
@@ -762,6 +1067,14 @@ export interface FullDeployParams {
   rules: { beneficiaryAddress: string; rule: TrustRule }[];
   walrusBlobId?: string;
   packageId?: string;
+  /** Override period in ms (0 = use 48hr default). */
+  overridePeriodMs?: bigint;
+  /** Whether grantor can close/withdraw (default true). */
+  isRevocable?: boolean;
+  /** Optional successor grantor address. */
+  successorGrantor?: string | null;
+  /** Optional trust protector address. */
+  trustProtector?: string | null;
 }
 
 /**
@@ -799,6 +1112,10 @@ export function buildFullDeployTxs(
     params.name,
     params.description,
     params.agentAddress,
+    params.overridePeriodMs ?? 0n,
+    params.isRevocable ?? true,
+    params.successorGrantor ?? null,
+    params.trustProtector ?? null,
     pkg,
   );
 

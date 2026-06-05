@@ -354,3 +354,56 @@ export function serializeManifest(manifest: TrustDocumentManifest): Uint8Array {
 export function deserializeManifest(data: Uint8Array): TrustDocumentManifest {
   return JSON.parse(new TextDecoder().decode(data)) as TrustDocumentManifest;
 }
+
+// ---------------------------------------------------------------------------
+// Principal / income accounting
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the income balance of a trust (balance above principal).
+ *
+ * Income balance = current_balance - (total_deposited - total_distributed)
+ *
+ * This represents funds earned beyond the original deposited principal
+ * (e.g. yield, appreciation). Returns 0n if negative (principal not yet
+ * recovered).
+ *
+ * @param trust - Parsed TrustState from the chain.
+ * @returns Income balance in MIST (always >= 0n).
+ */
+export function computeIncomeBalance(trust: TrustState): bigint {
+  const principal = trust.totalDeposited - trust.totalDistributed;
+  const income = trust.balance - principal;
+  return income > 0n ? income : 0n;
+}
+
+// ---------------------------------------------------------------------------
+// HEMS category formatting
+// ---------------------------------------------------------------------------
+
+const CATEGORY_LABELS: Record<string, string> = {
+  health: "Health (HEMS)",
+  education: "Education (HEMS)",
+  maintenance: "Maintenance (HEMS)",
+  support: "Support (HEMS)",
+  other: "Other",
+};
+
+/**
+ * Format a HEMS distribution category string for display.
+ *
+ * @example
+ * formatCategory("health")      // "Health (HEMS)"
+ * formatCategory("education")   // "Education (HEMS)"
+ * formatCategory("other")       // "Other"
+ * formatCategory("unknown")     // "Unknown"
+ *
+ * @param category - Raw on-chain category string.
+ * @returns Human-readable category label.
+ */
+export function formatCategory(category: string): string {
+  const lower = category.toLowerCase();
+  if (lower in CATEGORY_LABELS) return CATEGORY_LABELS[lower];
+  // Capitalize first letter as fallback
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}

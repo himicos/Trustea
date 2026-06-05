@@ -78,6 +78,8 @@ export {
   fetchTrust,
   fetchPendingDistributions,
   fetchPendingDistribution,
+  fetchDistributionRequests,
+  fetchDistributionRequest,
   fetchBeneficiaryNFTs,
   fetchTrustsCreatedBy,
   fetchAgentActivity,
@@ -88,6 +90,7 @@ export type {
   TrustState,
   RuleState,
   PendingDistributionState,
+  DistributionRequestState,
   AgentActivityEntry,
 } from "./trust-reader.js";
 
@@ -121,6 +124,8 @@ export {
   createDocumentManifest,
   serializeManifest,
   deserializeManifest,
+  computeIncomeBalance,
+  formatCategory,
 } from "./helpers.js";
 export type {
   MilestoneProgress,
@@ -149,6 +154,14 @@ export {
   buildCloseTrustTx,
   buildAmendTrustTx,
   buildFullDeployTxs,
+  buildRequestDistributionTx,
+  buildApproveRequestTx,
+  buildDenyRequestTx,
+  buildSetAgentAddressTx,
+  buildSetSuccessorGrantorTx,
+  buildMintRWATokenTx,
+  buildUpdateRWAValuationTx,
+  buildBurnRWATokenTx,
   RULE_TYPE_AGE,
   RULE_TYPE_TIME,
   RULE_TYPE_CREDENTIAL,
@@ -156,6 +169,7 @@ export {
 } from "./transactions.js";
 export type {
   TrustRule,
+  AmendTrustOptions,
   DeployBeneficiary,
   FullDeployParams,
 } from "./transactions.js";

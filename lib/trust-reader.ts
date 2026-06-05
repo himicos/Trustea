@@ -25,7 +25,7 @@ import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 
 /** Trustea Move package ID (testnet). */
 export const TRUSTEA_PACKAGE_ID =
-  "0x70c8cacdb0da58d12459fd852bcd2d8574bbfabe603753cc7733fede24ea9585";
+  "0x99918b1c3d33c75a0f8935713f5aa2ef82d8ef63d3352dfd0d320f69a1e0408e";
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -84,6 +84,42 @@ export interface TrustState {
   createdAt: number;
   /** Address of the AI agent authorised to propose distributions. */
   agentAddress: string;
+  /** Override period in ms (0 means default 48hr was used). */
+  overridePeriodMs: number;
+  /** Whether the grantor can close/withdraw (false = irrevocable). */
+  isRevocable: boolean;
+  /** Successor grantor address, or null if not set. */
+  successorGrantor: string | null;
+  /** Trust protector address, or null if not set. */
+  trustProtector: string | null;
+  /** Cumulative deposits in MIST (principal tracking). */
+  totalDeposited: bigint;
+  /** Cumulative distributions in MIST (principal tracking). */
+  totalDistributed: bigint;
+}
+
+/**
+ * Parsed representation of an on-chain DistributionRequest shared object.
+ */
+export interface DistributionRequestState {
+  /** Sui object ID of the DistributionRequest. */
+  id: string;
+  /** Object ID of the parent Trust. */
+  trustId: string;
+  /** Beneficiary address that submitted the request. */
+  beneficiary: string;
+  /** Requested amount in MIST. */
+  amount: bigint;
+  /** Human-readable reason for the request. */
+  reason: string;
+  /** HEMS category: "health" | "education" | "maintenance" | "support" | "other". */
+  category: string;
+  /** Timestamp (ms) when the request was submitted. */
+  requestedAt: number;
+  /** True if a grantor/agent approved the request. */
+  isApproved: boolean;
+  /** True if the grantor denied the request. */
+  isDenied: boolean;
 }
 
 /**
@@ -129,6 +165,12 @@ interface MoveRuleFields {
   is_active: boolean;
 }
 
+/** On-chain Option<address> shape from the RPC. */
+type MoveOptionAddress =
+  | null
+  | { fields: { vec: string[] } }
+  | { vec: string[] };
+
 interface MoveTrustFields {
   id: { id: string };
   name: string;
@@ -143,6 +185,24 @@ interface MoveTrustFields {
   walrus_blob_ids: string[];
   created_at: number | string;
   agent_address: string;
+  override_period_ms: number | string;
+  is_revocable: boolean;
+  successor_grantor: MoveOptionAddress;
+  trust_protector: MoveOptionAddress;
+  total_deposited: number | string;
+  total_distributed: number | string;
+}
+
+interface MoveDistributionRequestFields {
+  id: { id: string };
+  trust_id: string;
+  beneficiary: string;
+  amount: number | string;
+  reason: string;
+  category: string;
+  requested_at: number | string;
+  is_approved: boolean;
+  is_denied: boolean;
 }
 
 interface MovePendingDistributionFields {
@@ -194,6 +254,23 @@ function parseBalance(
     return toBigInt((raw as { value: number | string }).value);
   }
   return 0n;
+}
+
+/**
+ * Parse a Move Option<address> field from the RPC.
+ *
+ * On-chain Option<address> comes as either:
+ *   - null / undefined → None
+ *   - { fields: { vec: ["0x..."] } } → Some("0x...")
+ *   - { vec: ["0x..."] } → Some("0x...")
+ */
+function parseOptionAddress(raw: MoveOptionAddress | null | undefined): string | null {
+  if (raw == null) return null;
+  const vec = "fields" in raw && raw.fields != null
+    ? (raw as { fields: { vec: string[] } }).fields.vec
+    : (raw as { vec: string[] }).vec;
+  if (Array.isArray(vec) && vec.length > 0) return vec[0];
+  return null;
 }
 
 /**
@@ -274,6 +351,12 @@ export async function fetchTrust(
     walrusBlobIds: Array.isArray(fields.walrus_blob_ids) ? fields.walrus_blob_ids : [],
     createdAt: toNumber(fields.created_at),
     agentAddress: fields.agent_address ?? "",
+    overridePeriodMs: toNumber(fields.override_period_ms),
+    isRevocable: Boolean(fields.is_revocable),
+    successorGrantor: parseOptionAddress(fields.successor_grantor),
+    trustProtector: parseOptionAddress(fields.trust_protector),
+    totalDeposited: toBigInt(fields.total_deposited),
+    totalDistributed: toBigInt(fields.total_distributed),
   };
 }
 
@@ -387,6 +470,112 @@ export async function fetchPendingDistribution(
     isCancelled: Boolean(fields.is_cancelled),
     isExecuted: Boolean(fields.is_executed),
   };
+}
+
+/**
+ * Fetch and parse a single DistributionRequest object.
+ *
+ * @param suiClient - Initialised SuiJsonRpcClient.
+ * @param requestId - The Sui object ID of the DistributionRequest.
+ * @returns Parsed DistributionRequestState.
+ * @throws If the object does not exist or is the wrong type.
+ */
+export async function fetchDistributionRequest(
+  suiClient: SuiJsonRpcClient,
+  requestId: string,
+): Promise<DistributionRequestState> {
+  const response = await suiClient.getObject({
+    id: requestId,
+    options: { showContent: true },
+  });
+
+  if (!response.data) {
+    throw new Error(
+      `DistributionRequest object not found: ${requestId}` +
+      (response.error ? ` (${JSON.stringify(response.error)})` : ""),
+    );
+  }
+
+  const content = response.data.content;
+  if (!content || content.dataType !== "moveObject") {
+    throw new Error(`Object ${requestId} is not a Move object`);
+  }
+
+  const fields = content.fields as unknown as MoveDistributionRequestFields;
+
+  return {
+    id: requestId,
+    trustId: fields.trust_id ?? "",
+    beneficiary: fields.beneficiary ?? "",
+    amount: toBigInt(fields.amount),
+    reason: fields.reason ?? "",
+    category: fields.category ?? "",
+    requestedAt: toNumber(fields.requested_at),
+    isApproved: Boolean(fields.is_approved),
+    isDenied: Boolean(fields.is_denied),
+  };
+}
+
+/**
+ * Fetch all DistributionRequest objects for a given trust.
+ *
+ * Strategy:
+ *   1. Query `DistributionRequested` Move events filtered by `MoveEventType`.
+ *   2. Collect distinct `request_id` values from events matching the trust.
+ *   3. Fetch each DistributionRequest object by its ID.
+ *
+ * Returns all requests in any state (pending, approved, denied).
+ *
+ * @param suiClient     - Initialised SuiJsonRpcClient.
+ * @param trustObjectId - The Trust object ID to query requests for.
+ * @returns Array of parsed DistributionRequestState objects.
+ */
+export async function fetchDistributionRequests(
+  suiClient: SuiJsonRpcClient,
+  trustObjectId: string,
+): Promise<DistributionRequestState[]> {
+  const eventType = `${TRUSTEA_PACKAGE_ID}::trust::DistributionRequested`;
+
+  const eventsResult = await suiClient.queryEvents({
+    query: { MoveEventType: eventType },
+    limit: 100,
+  });
+
+  const requestIds: string[] = [];
+  const seen = new Set<string>();
+
+  for (const event of eventsResult.data) {
+    const parsedJson = event.parsedJson as
+      | { trust_id?: string; request_id?: string }
+      | undefined;
+
+    if (
+      parsedJson &&
+      parsedJson.trust_id === trustObjectId &&
+      parsedJson.request_id &&
+      !seen.has(parsedJson.request_id)
+    ) {
+      seen.add(parsedJson.request_id);
+      requestIds.push(parsedJson.request_id);
+    }
+  }
+
+  if (requestIds.length === 0) {
+    return [];
+  }
+
+  const settled = await Promise.allSettled(
+    requestIds.map((reqId) => fetchDistributionRequest(suiClient, reqId)),
+  );
+
+  const requests: DistributionRequestState[] = [];
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      requests.push(result.value);
+    }
+  }
+
+  return requests;
 }
 
 /**

@@ -13,6 +13,11 @@
 ///   - Grantor veto (cancel) of a proposed distribution
 ///   - Pause / resume trust
 ///   - Seal policy key-id helpers
+///   - Beneficiary requests a distribution
+///   - Grantor approves/denies request
+///   - Trust protector cancels a distribution
+///   - Agent rotation
+///   - Irrevocable trust restrictions
 #[test_only]
 module trustea::trust_tests;
 
@@ -21,7 +26,7 @@ use sui::coin;
 use sui::sui::SUI;
 use sui::test_scenario::{Self as ts, Scenario};
 use trustea::seal_policy;
-use trustea::trust::{Self, Trust, PendingDistribution};
+use trustea::trust::{Self, Trust, PendingDistribution, DistributionRequest};
 
 // ---------------------------------------------------------------------------
 // Test addresses
@@ -31,9 +36,11 @@ const GRANTOR: address = @0xAAAA;
 const BENEFICIARY: address = @0xBBBB;
 const AGENT: address = @0xCCCC;
 const STRANGER: address = @0xDDDD;
+const PROTECTOR: address = @0xEEEE;
+const NEW_AGENT: address = @0xFFFF;
 
 // ---------------------------------------------------------------------------
-// Helper: create a trust and return its ID
+// Helper: create a trust and return its ID (revocable, default params)
 // ---------------------------------------------------------------------------
 
 fun setup_trust(scenario: &mut Scenario): ID {
@@ -45,6 +52,10 @@ fun setup_trust(scenario: &mut Scenario): ID {
         b"Family Trust Alpha".to_string(),
         b"For the benefit of our children".to_string(),
         AGENT,
+        0, // use default override period
+        true, // revocable
+        option::none(),
+        option::none(),
         &clk,
         ctx,
     );
@@ -52,6 +63,60 @@ fun setup_trust(scenario: &mut Scenario): ID {
     clock::destroy_for_testing(clk);
 
     // Return the shared object ID from the next transaction's perspective.
+    ts::next_tx(scenario, GRANTOR);
+    let trust_obj = ts::take_shared<Trust>(scenario);
+    let id = object::id(&trust_obj);
+    ts::return_shared(trust_obj);
+    id
+}
+
+/// Helper: create a trust with a trust protector (revocable).
+fun setup_trust_with_protector(scenario: &mut Scenario): ID {
+    ts::next_tx(scenario, GRANTOR);
+    let ctx = scenario.ctx();
+    let clk = clock::create_for_testing(ctx);
+
+    trust::create_trust(
+        b"Protected Trust".to_string(),
+        b"Trust with protector oversight".to_string(),
+        AGENT,
+        0,
+        true,
+        option::none(),
+        option::some(PROTECTOR),
+        &clk,
+        ctx,
+    );
+
+    clock::destroy_for_testing(clk);
+
+    ts::next_tx(scenario, GRANTOR);
+    let trust_obj = ts::take_shared<Trust>(scenario);
+    let id = object::id(&trust_obj);
+    ts::return_shared(trust_obj);
+    id
+}
+
+/// Helper: create an irrevocable trust with protector.
+fun setup_irrevocable_trust(scenario: &mut Scenario): ID {
+    ts::next_tx(scenario, GRANTOR);
+    let ctx = scenario.ctx();
+    let clk = clock::create_for_testing(ctx);
+
+    trust::create_trust(
+        b"Irrevocable Trust".to_string(),
+        b"Cannot be withdrawn".to_string(),
+        AGENT,
+        0,
+        false, // irrevocable
+        option::none(),
+        option::some(PROTECTOR),
+        &clk,
+        ctx,
+    );
+
+    clock::destroy_for_testing(clk);
+
     ts::next_tx(scenario, GRANTOR);
     let trust_obj = ts::take_shared<Trust>(scenario);
     let id = object::id(&trust_obj);
@@ -78,6 +143,9 @@ fun test_create_trust() {
         assert!(trust.status() == trust::status_active(), 3);
         assert!(trust.balance_value() == 0, 4);
         assert!(trust.beneficiary_count() == 0, 5);
+        assert!(trust.is_revocable() == true, 6);
+        assert!(trust.total_deposited() == 0, 7);
+        assert!(trust.total_distributed() == 0, 8);
         ts::return_shared(trust);
     };
 
@@ -102,6 +170,7 @@ fun test_deposit() {
         trust::deposit(&mut trust, payment, ctx);
 
         assert!(trust.balance_value() == 1_000_000_000, 0);
+        assert!(trust.total_deposited() == 1_000_000_000, 1);
         ts::return_shared(trust);
     };
 
@@ -277,6 +346,7 @@ fun test_propose_and_execute_distribution() {
         assert!(trust::dist_is_executed(&dist), 1);
         // Balance should have decreased by 500_000_000.
         assert!(trust.balance_value() == 1_500_000_000, 2);
+        assert!(trust.total_distributed() == 500_000_000, 3);
 
         clock::destroy_for_testing(clk);
         ts::return_shared(dist);
@@ -524,9 +594,563 @@ fun test_cannot_execute_before_override_period() {
         let mut dist = ts::take_shared<PendingDistribution>(&scenario);
         let ctx = scenario.ctx();
 
-        // Time = 0, override period not elapsed → should abort.
+        // Time = 0, override period not elapsed -> should abort.
         let clk = clock::create_for_testing(ctx);
         trust::execute_distribution(&mut trust, &mut dist, &clk, ctx);
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(dist);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 12: Beneficiary requests a distribution
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_beneficiary_request_distribution() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust(&mut scenario);
+
+    // Add beneficiary.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"Education fund".to_string(),
+            500_000_000,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        let payment = coin::mint_for_testing<SUI>(2_000_000_000, ctx);
+        trust::deposit(&mut trust, payment, ctx);
+        ts::return_shared(trust);
+    };
+
+    // Beneficiary requests distribution.
+    ts::next_tx(&mut scenario, BENEFICIARY);
+    {
+        let trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+
+        trust::request_distribution(
+            &trust,
+            200_000_000,
+            b"Tuition payment for fall semester".to_string(),
+            b"education".to_string(),
+            &clk,
+            ctx,
+        );
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Verify the request was created.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let request = ts::take_shared<DistributionRequest>(&scenario);
+        assert!(trust::req_beneficiary(&request) == BENEFICIARY, 0);
+        assert!(trust::req_amount(&request) == 200_000_000, 1);
+        assert!(trust::req_category(&request) == b"education".to_string(), 2);
+        assert!(!trust::req_is_approved(&request), 3);
+        assert!(!trust::req_is_denied(&request), 4);
+        ts::return_shared(request);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 13: Grantor approves a beneficiary request
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_grantor_approves_request() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust(&mut scenario);
+
+    // Add beneficiary + deposit.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"Health fund".to_string(),
+            500_000_000,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        let payment = coin::mint_for_testing<SUI>(2_000_000_000, ctx);
+        trust::deposit(&mut trust, payment, ctx);
+        ts::return_shared(trust);
+    };
+
+    // Beneficiary requests.
+    ts::next_tx(&mut scenario, BENEFICIARY);
+    {
+        let trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::request_distribution(
+            &trust,
+            100_000_000,
+            b"Medical expenses".to_string(),
+            b"health".to_string(),
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Grantor approves the request.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let mut request = ts::take_shared<DistributionRequest>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+
+        trust::approve_request(&mut trust, &mut request, &clk, ctx);
+
+        assert!(trust::req_is_approved(&request), 0);
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(request);
+        ts::return_shared(trust);
+    };
+
+    // Verify a PendingDistribution was created.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let dist = ts::take_shared<PendingDistribution>(&scenario);
+        assert!(trust::dist_beneficiary(&dist) == BENEFICIARY, 0);
+        assert!(trust::dist_amount(&dist) == 100_000_000, 1);
+        assert!(!trust::dist_is_executed(&dist), 2);
+        ts::return_shared(dist);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 14: Grantor denies a beneficiary request
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_grantor_denies_request() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust(&mut scenario);
+
+    // Add beneficiary.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"Maintenance".to_string(),
+            500_000_000,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Beneficiary requests.
+    ts::next_tx(&mut scenario, BENEFICIARY);
+    {
+        let trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::request_distribution(
+            &trust,
+            999_000_000,
+            b"Vacation funds".to_string(),
+            b"other".to_string(),
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Grantor denies.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let trust = ts::take_shared<Trust>(&scenario);
+        let mut request = ts::take_shared<DistributionRequest>(&scenario);
+        let ctx = scenario.ctx();
+
+        trust::deny_request(&trust, &mut request, ctx);
+        assert!(trust::req_is_denied(&request), 0);
+
+        ts::return_shared(request);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 15: Trust protector cancels a distribution
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_protector_cancels_distribution() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_protector(&mut scenario);
+
+    // Add beneficiary + deposit.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"Allowance".to_string(),
+            500_000_000,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        let payment = coin::mint_for_testing<SUI>(2_000_000_000, ctx);
+        trust::deposit(&mut trust, payment, ctx);
+        ts::return_shared(trust);
+    };
+
+    // Agent proposes.
+    ts::next_tx(&mut scenario, AGENT);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::propose_distribution(
+            &mut trust,
+            0,
+            BENEFICIARY,
+            500_000_000,
+            b"Suspicious large distribution".to_string(),
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Trust protector cancels.
+    ts::next_tx(&mut scenario, PROTECTOR);
+    {
+        let trust = ts::take_shared<Trust>(&scenario);
+        let mut dist = ts::take_shared<PendingDistribution>(&scenario);
+        let ctx = scenario.ctx();
+
+        assert!(!trust::dist_is_cancelled(&dist), 0);
+        trust::cancel_distribution(&trust, &mut dist, ctx);
+        assert!(trust::dist_is_cancelled(&dist), 1);
+
+        ts::return_shared(dist);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 16: Agent rotation
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_agent_rotation_by_grantor() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust(&mut scenario);
+
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+
+        assert!(trust.agent_address() == AGENT, 0);
+        trust::set_agent_address(&mut trust, NEW_AGENT, ctx);
+        assert!(trust.agent_address() == NEW_AGENT, 1);
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+#[test]
+fun test_agent_rotation_by_protector() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_protector(&mut scenario);
+
+    ts::next_tx(&mut scenario, PROTECTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+
+        assert!(trust.agent_address() == AGENT, 0);
+        trust::set_agent_address(&mut trust, NEW_AGENT, ctx);
+        assert!(trust.agent_address() == NEW_AGENT, 1);
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 17: Irrevocable trust - close does not return funds
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_irrevocable_trust_close_keeps_balance() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_irrevocable_trust(&mut scenario);
+
+    // Deposit funds.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let payment = coin::mint_for_testing<SUI>(1_000_000_000, ctx);
+        trust::deposit(&mut trust, payment, ctx);
+        assert!(trust.balance_value() == 1_000_000_000, 0);
+        ts::return_shared(trust);
+    };
+
+    // Close the irrevocable trust -- balance should remain locked.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        trust::close_trust(&mut trust, ctx);
+
+        assert!(trust.status() == trust::status_closed(), 0);
+        // Balance stays locked for irrevocable trusts.
+        assert!(trust.balance_value() == 1_000_000_000, 1);
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 18: Irrevocable trust - grantor cannot amend (only protector can)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[expected_failure(abort_code = trustea::trust::EIrrevocableTrust)]
+fun test_irrevocable_trust_grantor_cannot_amend() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_irrevocable_trust(&mut scenario);
+
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+
+        // Grantor should NOT be able to amend an irrevocable trust.
+        trust::amend_trust(
+            &mut trust,
+            option::some(b"New Name".to_string()),
+            option::none(),
+            option::none(),
+            option::none(),
+            ctx,
+        );
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+#[test]
+fun test_irrevocable_trust_protector_can_amend() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_irrevocable_trust(&mut scenario);
+
+    ts::next_tx(&mut scenario, PROTECTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+
+        // Protector CAN amend an irrevocable trust.
+        trust::amend_trust(
+            &mut trust,
+            option::some(b"Updated Irrevocable Trust".to_string()),
+            option::none(),
+            option::none(),
+            option::none(),
+            ctx,
+        );
+
+        assert!(trust.name() == b"Updated Irrevocable Trust".to_string(), 0);
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 19: Trust protector can pause/resume
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_protector_pause_resume() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_protector(&mut scenario);
+
+    ts::next_tx(&mut scenario, PROTECTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+
+        trust::pause_trust(&mut trust, ctx);
+        assert!(trust.status() == trust::status_paused(), 0);
+
+        trust::resume_trust(&mut trust, ctx);
+        assert!(trust.status() == trust::status_active(), 1);
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 20: Set successor grantor
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_set_successor_grantor() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust(&mut scenario);
+
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+
+        assert!(trust.successor_grantor().is_none(), 0);
+
+        trust::set_successor_grantor(
+            &mut trust,
+            option::some(STRANGER),
+            ctx,
+        );
+
+        assert!(trust.successor_grantor().is_some(), 1);
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 21: Principal vs income tracking across deposits and distributions
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_principal_income_tracking() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust(&mut scenario);
+
+    // Add beneficiary + deposit.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"Income beneficiary".to_string(),
+            0,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+
+        // First deposit.
+        let payment1 = coin::mint_for_testing<SUI>(1_000_000_000, ctx);
+        trust::deposit(&mut trust, payment1, ctx);
+        assert!(trust.total_deposited() == 1_000_000_000, 0);
+
+        // Second deposit.
+        let payment2 = coin::mint_for_testing<SUI>(500_000_000, ctx);
+        trust::deposit(&mut trust, payment2, ctx);
+        assert!(trust.total_deposited() == 1_500_000_000, 1);
+        assert!(trust.total_distributed() == 0, 2);
+
+        ts::return_shared(trust);
+    };
+
+    // Propose + execute a distribution to verify total_distributed tracks.
+    ts::next_tx(&mut scenario, AGENT);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::propose_distribution(
+            &mut trust,
+            0,
+            BENEFICIARY,
+            200_000_000,
+            b"Income distribution".to_string(),
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    ts::next_tx(&mut scenario, AGENT);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let mut dist = ts::take_shared<PendingDistribution>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(172_800_001);
+        trust::execute_distribution(&mut trust, &mut dist, &clk, ctx);
+
+        assert!(trust.total_deposited() == 1_500_000_000, 0);
+        assert!(trust.total_distributed() == 200_000_000, 1);
+        assert!(trust.balance_value() == 1_300_000_000, 2);
 
         clock::destroy_for_testing(clk);
         ts::return_shared(dist);
