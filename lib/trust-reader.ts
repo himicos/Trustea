@@ -25,7 +25,7 @@ import type { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 
 /** Trustea Move package ID (testnet). */
 export const TRUSTEA_PACKAGE_ID =
-  "0x99918b1c3d33c75a0f8935713f5aa2ef82d8ef63d3352dfd0d320f69a1e0408e";
+  "0xe2fb4534f87cb3e8d9d9d80b738ca3dd505100821e1481178af9801019365804";
 
 // ---------------------------------------------------------------------------
 // Public interfaces

@@ -150,7 +150,11 @@ let trustObjectId = "";
       tx.pure.string("Integration Test Trust"),
       tx.pure.string("Automated integration test"),
       tx.pure.address(agentAddr),
-      tx.object("0x6"),
+      tx.pure.u64(0), // override_period_ms (0 = use 48hr default)
+      tx.pure.bool(true), // is_revocable
+      tx.pure.option("address", undefined), // successor_grantor = None
+      tx.pure.option("address", undefined), // trust_protector = None
+      tx.object("0x6"), // clock
     ],
   });
 
@@ -263,6 +267,8 @@ section("Add time-based rule");
 
 section("Fetch + parse Trust from chain");
 {
+  // Small delay to let the RPC index the latest transactions
+  await new Promise((r) => setTimeout(r, 2000));
   try {
     const trust = await fetchTrust(suiClient, trustObjectId);
     pass(`Name: "${trust.name}"`);
@@ -476,7 +482,7 @@ section("Agent condition monitor");
 
     pass(`Checked ${checks.length} condition(s)`);
     for (const check of checks) {
-      pass(`  Rule #${check.ruleIndex}: conditionMet=${check.conditionMet}, reason="${check.reason}"`);
+      pass(`  Rule #${check.ruleIndex}: conditionMet=${check.conditionMet}, details="${check.details}"`);
     }
   } catch (e) {
     fail("Condition monitor failed", e);
@@ -495,8 +501,9 @@ section("Distribution proposal engine");
     const mockCheck = {
       ruleIndex: 0,
       conditionMet: true,
-      reason: "Test: forced condition met",
+      details: "Test: forced condition met",
       beneficiary: beneficiaryAddr,
+      checkedAt: Date.now(),
     };
 
     const mockRule = {

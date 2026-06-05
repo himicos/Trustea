@@ -22,11 +22,14 @@
 module trustea::trust_tests;
 
 use sui::clock;
-use sui::coin;
+use sui::coin::{Self, Coin};
 use sui::sui::SUI;
 use sui::test_scenario::{Self as ts, Scenario};
 use trustea::seal_policy;
 use trustea::trust::{Self, Trust, PendingDistribution, DistributionRequest};
+
+/// Test-only coin type for multi-asset tests.
+public struct USDC has drop {}
 
 // ---------------------------------------------------------------------------
 // Test addresses
@@ -1080,11 +1083,52 @@ fun test_set_successor_grantor() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 21: Principal vs income tracking across deposits and distributions
+// Test 21: Multi-asset deposit (deposit_coin<T> + coin_balance<T>)
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_multi_asset_deposit() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust(&mut scenario);
+
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+
+        // Deposit a non-SUI coin type (USDC)
+        let usdc_coin = coin::mint_for_testing<USDC>(500_000_000, ctx);
+        trust::deposit_coin<USDC>(&mut trust, usdc_coin, ctx);
+
+        // Read the balance back
+        assert!(trust::coin_balance<USDC>(&trust) == 500_000_000, 0);
+        // SUI primary balance should still be zero
+        assert!(trust.balance_value() == 0, 1);
+        // total_deposited should include the USDC deposit
+        assert!(trust.total_deposited() == 500_000_000, 2);
+
+        // Deposit more USDC — should accumulate
+        let usdc_coin2 = coin::mint_for_testing<USDC>(200_000_000, ctx);
+        trust::deposit_coin<USDC>(&mut trust, usdc_coin2, ctx);
+        assert!(trust::coin_balance<USDC>(&trust) == 700_000_000, 3);
+        assert!(trust.total_deposited() == 700_000_000, 4);
+
+        // SUI balance via coin_balance should be 0 (not deposited via deposit_coin)
+        assert!(trust::coin_balance<SUI>(&trust) == 0, 5);
+
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 22: Principal vs income tracking across deposits and distributions
 // ---------------------------------------------------------------------------
 
 #[test]
 fun test_principal_income_tracking() {
+    // (renumbered from test 21)
     let mut scenario = ts::begin(GRANTOR);
     setup_trust(&mut scenario);
 

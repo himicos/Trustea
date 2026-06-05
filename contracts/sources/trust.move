@@ -27,6 +27,9 @@
 module trustea::trust;
 
 use std::string::String;
+use std::type_name;
+use std::ascii;
+use sui::bag::{Self, Bag};
 use sui::balance::{Self, Balance};
 use sui::clock::Clock;
 use sui::coin::{Self, Coin};
@@ -176,6 +179,8 @@ public struct Trust has key {
     total_deposited: u64,
     /// Cumulative distributions (principal tracking).
     total_distributed: u64,
+    /// Holds Balance<T> for non-SUI coin types, keyed by type name string.
+    additional_balances: Bag,
 }
 
 // ---------------------------------------------------------------------------
@@ -276,6 +281,13 @@ public struct DistributionRequestDenied has copy, drop {
     denied_by: address,
 }
 
+public struct CoinDeposited has copy, drop {
+    trust_id: ID,
+    depositor: address,
+    amount: u64,
+    coin_type: ascii::String,
+}
+
 public struct AgentRotated has copy, drop {
     trust_id: ID,
     old_agent: address,
@@ -341,6 +353,7 @@ public fun create_trust(
         trust_protector,
         total_deposited: 0,
         total_distributed: 0,
+        additional_balances: bag::new(ctx),
     };
 
     let trust_id = object::id(&trust);
@@ -377,6 +390,95 @@ public fun deposit(trust: &mut Trust, payment: Coin<SUI>, ctx: &mut TxContext) {
         amount,
         new_balance: trust.balance.value(),
     });
+}
+
+// ---------------------------------------------------------------------------
+// Multi-asset deposits and distributions
+// ---------------------------------------------------------------------------
+
+/// Deposit any coin type T into the trust's additional balances bag.
+///
+/// Anyone may deposit. Trust must not be CLOSED.
+/// SUI can also be deposited here (it goes into the Bag, not the primary balance).
+public fun deposit_coin<T>(trust: &mut Trust, payment: Coin<T>, ctx: &mut TxContext) {
+    assert!(trust.status != STATUS_CLOSED, ETrustClosed);
+    let amount = payment.value();
+    assert!(amount > 0, EZeroAmount);
+
+    let type_name = type_name::with_defining_ids<T>().into_string();
+
+    if (bag::contains<ascii::String>(&trust.additional_balances, type_name)) {
+        let existing = bag::borrow_mut<ascii::String, Balance<T>>(
+            &mut trust.additional_balances,
+            type_name,
+        );
+        balance::join(existing, coin::into_balance(payment));
+    } else {
+        bag::add(&mut trust.additional_balances, type_name, coin::into_balance(payment));
+    };
+
+    trust.total_deposited = trust.total_deposited + amount;
+
+    event::emit(CoinDeposited {
+        trust_id: object::id(trust),
+        depositor: ctx.sender(),
+        amount,
+        coin_type: type_name::with_defining_ids<T>().into_string(),
+    });
+}
+
+/// Distribute a non-SUI coin type from the trust's additional balances.
+///
+/// Same authorization and timing checks as execute_distribution.
+public fun distribute_coin<T>(
+    trust: &mut Trust,
+    dist: &mut PendingDistribution,
+    amount: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(trust.status == STATUS_ACTIVE, ETrustNotActive);
+    assert!(object::id(trust) == dist.trust_id, ERuleNotFound);
+    assert!(!dist.is_cancelled, EDistributionAlreadyCancelled);
+    assert!(!dist.is_executed, EDistributionAlreadyExecuted);
+    assert!(clock.timestamp_ms() >= dist.executable_after, EOverridePeriodNotElapsed);
+    assert!(amount > 0, EZeroAmount);
+
+    let type_name = type_name::with_defining_ids<T>().into_string();
+    assert!(bag::contains<ascii::String>(&trust.additional_balances, type_name), EInsufficientBalance);
+
+    let bal = bag::borrow_mut<ascii::String, Balance<T>>(
+        &mut trust.additional_balances,
+        type_name,
+    );
+    assert!(bal.value() >= amount, EInsufficientBalance);
+
+    dist.is_executed = true;
+    trust.total_distributed = trust.total_distributed + amount;
+
+    let payout = coin::from_balance(balance::split(bal, amount), ctx);
+
+    event::emit(DistributionExecuted {
+        trust_id: object::id(trust),
+        distribution_id: object::id(dist),
+        beneficiary: dist.beneficiary,
+        amount,
+        executed_by: ctx.sender(),
+    });
+
+    transfer::public_transfer(payout, dist.beneficiary);
+}
+
+/// Read the balance of a coin type T held in the trust's additional balances.
+/// Returns 0 if the coin type has never been deposited.
+public fun coin_balance<T>(trust: &Trust): u64 {
+    let type_name = type_name::with_defining_ids<T>().into_string();
+    if (bag::contains<ascii::String>(&trust.additional_balances, type_name)) {
+        let bal = bag::borrow<ascii::String, Balance<T>>(&trust.additional_balances, type_name);
+        bal.value()
+    } else {
+        0
+    }
 }
 
 // ---------------------------------------------------------------------------
