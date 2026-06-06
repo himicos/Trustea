@@ -1,0 +1,188 @@
+@import "tailwindcss";
+
+/* ─── Trustea Design System ─── */
+/* From ideation/18-design-system.md — exact tokens */
+
+:root {
+  /* Core */
+  --green-primary: #0D6E4F;
+  --green-light: #10B981;
+  --green-surface: #ECFDF5;
+
+  /* Neutrals */
+  --background: #FAFBFC;
+  --surface: #FFFFFF;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+
+  /* Text */
+  --text-primary: #1A1A2E;
+  --text-secondary: #6B7280;
+  --text-muted: #9CA3AF;
+
+  /* Semantic */
+  --warning: #F59E0B;
+  --warning-surface: #FFFBEB;
+  --error: #EF4444;
+  --error-surface: #FEF2F2;
+  --info: #4DA2FF;
+  --info-surface: #EFF6FF;
+
+  /* Sidebar */
+  --sidebar-bg: #0D6E4F;
+  --sidebar-text: #FFFFFF;
+  --sidebar-muted: rgba(255, 255, 255, 0.6);
+  --sidebar-active: rgba(255, 255, 255, 0.12);
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+}
+
+/* No dark mode — single mode, done perfectly */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--text-primary);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-green-primary: var(--green-primary);
+  --color-green-light: var(--green-light);
+  --color-green-surface: var(--green-surface);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --color-warning: var(--warning);
+  --color-warning-surface: var(--warning-surface);
+  --color-error: var(--error);
+  --color-error-surface: var(--error-surface);
+  --color-info: var(--info);
+  --color-info-surface: var(--info-surface);
+
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-text: var(--sidebar-text);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-hover: var(--sidebar-hover);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+/* ─── Base Styles ─── */
+
+body {
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Typography constraints ─── */
+/* Max two weights: 400 (body) and 600 (headings) */
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+}
+
+/* Monospace for on-chain data */
+.font-mono {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+/* ─── Component base styles ─── */
+
+/* Buttons: 8px radius, no larger */
+.btn {
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 20px;
+  min-height: 40px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.btn-primary {
+  background: var(--green-primary);
+  color: white;
+}
+.btn-primary:hover {
+  background: #0A5A40;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+}
+.btn-secondary:hover {
+  background: #F9FAFB;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+}
+.btn-ghost:hover {
+  background: #F3F4F6;
+}
+
+/* Cards: 8px radius, shadow-sm only */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Inputs: 6px radius */
+input, textarea, select {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+  background: var(--surface);
+  color: var(--text-primary);
+  transition: all 150ms ease;
+}
+input::placeholder, textarea::placeholder {
+  color: var(--text-muted);
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--green-primary);
+  box-shadow: 0 0 0 2px rgba(13, 110, 79, 0.2);
+}
+
+/* Status dots */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot-active { background: var(--green-light); }
+.dot-pending { background: var(--warning); }
+.dot-inactive { background: var(--text-muted); }
+.dot-error { background: var(--error); }
+
+/* Progress bar */
+.progress-track {
+  background: var(--border);
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  background: var(--green-light);
+  height: 100%;
+  border-radius: 3px;
+  transition: width 200ms ease;
+}
