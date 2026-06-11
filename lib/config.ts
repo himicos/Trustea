@@ -53,7 +53,7 @@ export const TESTNET_CONFIG: TrusteaConfig = {
       "0xb012378c9f3799fb5b1a7083da74a4069e3c3f1c93de0b27212a5799ce1e1e98",
     aggregatorUrl: "https://seal-aggregator-testnet.mystenlabs.com",
     packageId:
-      "0xe2fb4534f87cb3e8d9d9d80b738ca3dd505100821e1481178af9801019365804",
+      "0xa3e912b4d4be96e1206bd76cdadb512fe151b9dfd6921bd9afc9be1d97a8487a",
   },
   memwal: {
     serverUrl: "https://relayer-staging.memory.walrus.xyz",

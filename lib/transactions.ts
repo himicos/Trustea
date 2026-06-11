@@ -1186,3 +1186,122 @@ export function buildFullDeployTxs(
 
   return { createTx, setupTx };
 }
+
+// ---------------------------------------------------------------------------
+// Dead Man's Switch transaction builders
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a transaction to configure the Dead Man's Switch on a trust.
+ */
+export function buildConfigureDMSTx(params: {
+  trustId: string;
+  heartbeatPeriodMs: bigint;
+  gracePeriodMs: bigint;
+  vetoPeriodMs: bigint;
+  activationThreshold: number;
+  activators: string[];
+  packageId?: string;
+}) {
+  const pkg = params.packageId ?? DEFAULT_PACKAGE_ID;
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(pkg, "configure_dms"),
+    arguments: [
+      tx.object(params.trustId),
+      tx.pure.u64(params.heartbeatPeriodMs),
+      tx.pure.u64(params.gracePeriodMs),
+      tx.pure.u64(params.vetoPeriodMs),
+      tx.pure.u8(params.activationThreshold),
+      tx.pure.vector("address", params.activators),
+      tx.object("0x6"), // Clock
+    ],
+  });
+
+  return tx;
+}
+
+/**
+ * Build a transaction for the grantor to confirm they are alive (heartbeat).
+ */
+export function buildDMSHeartbeatTx(params: {
+  trustId: string;
+  packageId?: string;
+}) {
+  const pkg = params.packageId ?? DEFAULT_PACKAGE_ID;
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(pkg, "dms_heartbeat"),
+    arguments: [
+      tx.object(params.trustId),
+      tx.object("0x6"),
+    ],
+  });
+
+  return tx;
+}
+
+/**
+ * Build a transaction for an activator to vote to trigger the DMS.
+ */
+export function buildDMSVoteTriggerTx(params: {
+  trustId: string;
+  packageId?: string;
+}) {
+  const pkg = params.packageId ?? DEFAULT_PACKAGE_ID;
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(pkg, "dms_vote_trigger"),
+    arguments: [
+      tx.object(params.trustId),
+      tx.object("0x6"),
+    ],
+  });
+
+  return tx;
+}
+
+/**
+ * Build a transaction to execute the DMS after trigger + veto period.
+ */
+export function buildDMSExecuteTx(params: {
+  trustId: string;
+  packageId?: string;
+}) {
+  const pkg = params.packageId ?? DEFAULT_PACKAGE_ID;
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(pkg, "dms_execute"),
+    arguments: [
+      tx.object(params.trustId),
+      tx.object("0x6"),
+    ],
+  });
+
+  return tx;
+}
+
+/**
+ * Build a transaction for the trust protector to veto a triggered DMS.
+ */
+export function buildDMSVetoTx(params: {
+  trustId: string;
+  packageId?: string;
+}) {
+  const pkg = params.packageId ?? DEFAULT_PACKAGE_ID;
+  const tx = new Transaction();
+
+  tx.moveCall({
+    target: target(pkg, "dms_veto"),
+    arguments: [
+      tx.object(params.trustId),
+      tx.object("0x6"),
+    ],
+  });
+
+  return tx;
+}
