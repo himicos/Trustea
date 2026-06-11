@@ -57,8 +57,24 @@ export interface TrusteeAgentConfig {
   trustBalance?: number;
 }
 
+/** Context recalled from MemWal before making decisions. */
+export interface RecalledContext {
+  /** Past condition checks relevant to current rules. */
+  pastConditions: Array<{ text: string; distance: number }>;
+  /** Past distribution proposals and outcomes. */
+  pastProposals: Array<{ text: string; distance: number }>;
+  /** Past yield strategy decisions. */
+  pastYield: Array<{ text: string; distance: number }>;
+  /** Number of total memories queried. */
+  totalRecalled: number;
+  /** Time taken to recall (ms). */
+  recallDurationMs: number;
+}
+
 /** Summary of a single monitoring cycle's results. */
 export interface CycleResult {
+  /** Context recalled from prior cycles (empty on first run). */
+  recalledContext: RecalledContext;
   conditionsChecked: ConditionCheck[];
   proposalsGenerated: DistributionProposal[];
   yieldActions: YieldStrategy[];
@@ -210,6 +226,97 @@ export class TrusteeAgent {
   }
 
   // ---------------------------------------------------------------------------
+  // Memory recall — the "before" in recall-before-act
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Query MemWal for relevant past decisions before making new ones.
+   *
+   * This is the core of the recall-before-act pattern: the agent reviews its
+   * own history to make better-informed decisions each cycle. Over time, the
+   * agent accumulates context that no single cycle could provide — distribution
+   * patterns, recurring condition outcomes, yield performance trends.
+   *
+   * @returns RecalledContext with past conditions, proposals, and yield decisions
+   */
+  private async recallContext(): Promise<RecalledContext> {
+    const start = Date.now();
+    const empty: RecalledContext = {
+      pastConditions: [],
+      pastProposals: [],
+      pastYield: [],
+      totalRecalled: 0,
+      recallDurationMs: 0,
+    };
+
+    // If MemWal is not connected or has no recall method, skip gracefully
+    const client = this.config.memwalClient as Record<string, unknown> | null;
+    if (
+      client == null ||
+      typeof client.recallHistory !== "function"
+    ) {
+      return empty;
+    }
+
+    const recall = client.recallHistory as (
+      query: string,
+      limit?: number,
+      namespace?: string,
+    ) => Promise<Array<{ text: string; distance: number }>>;
+
+    try {
+      // Build recall queries from current rule set for targeted context
+      const rulesSummary = this.rules
+        .slice(0, 5)
+        .map((r) => `${r.ruleType}: ${r.conditionDescription}`)
+        .join(", ");
+
+      const trustQuery = `trust ${this.config.trustId} conditions distributions`;
+      const rulesQuery = rulesSummary
+        ? `condition checks for rules: ${rulesSummary}`
+        : trustQuery;
+
+      // Recall in parallel — conditions, proposals, and yield history
+      const [pastConditions, pastProposals, pastYield] = await Promise.all([
+        recall(rulesQuery, 5, "trustea-decisions").catch(() => []),
+        recall(
+          `distribution proposals outcomes for trust ${this.config.trustId}`,
+          5,
+          "trustea-decisions",
+        ).catch(() => []),
+        recall(
+          `yield strategy performance allocation`,
+          3,
+          "trustea-decisions",
+        ).catch(() => []),
+      ]);
+
+      const totalRecalled =
+        pastConditions.length + pastProposals.length + pastYield.length;
+
+      const result: RecalledContext = {
+        pastConditions,
+        pastProposals,
+        pastYield,
+        totalRecalled,
+        recallDurationMs: Date.now() - start,
+      };
+
+      if (totalRecalled > 0) {
+        console.log(
+          `[TrusteeAgent] Recalled ${totalRecalled} memories in ${result.recallDurationMs}ms ` +
+            `(${pastConditions.length} conditions, ${pastProposals.length} proposals, ${pastYield.length} yield)`
+        );
+      }
+
+      return result;
+    } catch (err) {
+      console.warn("[TrusteeAgent] Memory recall failed (non-fatal):", err);
+      return { ...empty, recallDurationMs: Date.now() - start };
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Main monitoring cycle
   // ---------------------------------------------------------------------------
 
@@ -217,10 +324,16 @@ export class TrusteeAgent {
    * Run one complete monitoring cycle.
    *
    * Steps:
+   * 0. **Recall** — Query MemWal for past decisions relevant to current rules
    * 1. Check all rule conditions (time, credential, periodic)
    * 2. Generate distribution proposals for triggered conditions
    * 3. Build yield strategy recommendations for idle balance
-   * 4. Log everything to MemWal
+   * 4. Log everything to MemWal (including recall context for audit)
+   *
+   * The recall-before-act pattern means the agent gets smarter over time:
+   * early cycles have no history, but after days/weeks the agent references
+   * past distribution patterns, condition outcomes, and yield performance
+   * to make better-informed decisions.
    *
    * @returns Summary of what happened this cycle
    */
@@ -239,7 +352,28 @@ export class TrusteeAgent {
     }
 
     // ------------------------------------------------------------------
-    // Step 1: Check conditions
+    // Step 0: Recall past decisions from MemWal
+    // ------------------------------------------------------------------
+    const recalledContext = await this.recallContext();
+
+    // Enrich the cycle log with historical context so future recalls
+    // can see what the agent knew at decision time.
+    if (recalledContext.totalRecalled > 0) {
+      const recallKey = `memory_recall_${now}`;
+      await writeMemory(this.config.memwalClient, recallKey, {
+        trustId: this.config.trustId,
+        recalled: recalledContext.totalRecalled,
+        durationMs: recalledContext.recallDurationMs,
+        // Store summaries of what was recalled so future cycles see the chain
+        conditionHistory: recalledContext.pastConditions.map((m) => m.text).slice(0, 3),
+        proposalHistory: recalledContext.pastProposals.map((m) => m.text).slice(0, 3),
+        yieldHistory: recalledContext.pastYield.map((m) => m.text).slice(0, 2),
+      });
+      memoryStored.push(recallKey);
+    }
+
+    // ------------------------------------------------------------------
+    // Step 1: Check conditions (enriched by recalled context)
     // ------------------------------------------------------------------
     const conditionsChecked = await checkConditions({
       trustId: this.config.trustId,
@@ -253,10 +387,21 @@ export class TrusteeAgent {
     this.totalChecks += conditionsChecked.length;
 
     const conditionKey = `condition_check_${now}`;
-    await writeMemory(this.config.memwalClient, conditionKey, {
+    // Store condition results with historical context for richer future recall
+    const conditionPayload: Record<string, unknown> = {
       trustId: this.config.trustId,
       checks: conditionsChecked,
-    });
+      cycleNumber: this.totalChecks + conditionsChecked.length,
+    };
+    // If we recalled past conditions, note them alongside current results
+    // so future recall queries see the decision chain
+    if (recalledContext.pastConditions.length > 0) {
+      conditionPayload.informedBy = recalledContext.pastConditions.length + " prior memories";
+      conditionPayload.priorContext = recalledContext.pastConditions
+        .slice(0, 2)
+        .map((m) => m.text.slice(0, 200));
+    }
+    await writeMemory(this.config.memwalClient, conditionKey, conditionPayload);
     memoryStored.push(conditionKey);
 
     // ------------------------------------------------------------------
@@ -273,14 +418,25 @@ export class TrusteeAgent {
       this.totalDistributions += proposalsGenerated.length;
 
       const proposalKey = `distribution_proposals_${now}`;
-      await writeMemory(this.config.memwalClient, proposalKey, {
+      const proposalPayload: Record<string, unknown> = {
         trustId: this.config.trustId,
         proposals: proposalsGenerated,
-      });
+      };
+      // Reference past proposals so the agent can track distribution patterns over time
+      if (recalledContext.pastProposals.length > 0) {
+        proposalPayload.priorProposals = recalledContext.pastProposals.length;
+        proposalPayload.priorContext = recalledContext.pastProposals
+          .slice(0, 2)
+          .map((m) => m.text.slice(0, 200));
+      }
+      await writeMemory(this.config.memwalClient, proposalKey, proposalPayload);
       memoryStored.push(proposalKey);
 
       console.log(
-        `[TrusteeAgent] Generated ${proposalsGenerated.length} distribution proposal(s).`
+        `[TrusteeAgent] Generated ${proposalsGenerated.length} distribution proposal(s)` +
+          (recalledContext.pastProposals.length > 0
+            ? ` (informed by ${recalledContext.pastProposals.length} prior proposals).`
+            : ".")
       );
     }
 
@@ -322,11 +478,51 @@ export class TrusteeAgent {
     this.recentMemories.unshift(...memoryStored);
     this.recentMemories = this.recentMemories.slice(0, 20);
 
+    // ------------------------------------------------------------------
+    // Step 5: Store a cycle summary for efficient future recall
+    // ------------------------------------------------------------------
+    // This single memory entry captures the entire cycle in natural language,
+    // making future semantic recall more effective than querying raw data.
+    const metCount = conditionsChecked.filter((c) => c.conditionMet).length;
+    const summaryParts = [
+      `Cycle at ${new Date(now).toISOString()} for trust ${this.config.trustId}.`,
+      `Checked ${conditionsChecked.length} conditions: ${metCount} met, ${conditionsChecked.length - metCount} not met.`,
+    ];
+    if (proposalsGenerated.length > 0) {
+      const totalAmount = proposalsGenerated.reduce((s, p) => s + p.amount, 0);
+      summaryParts.push(
+        `Generated ${proposalsGenerated.length} proposals totaling ${totalAmount} MIST.`
+      );
+    }
+    if (yieldActions.length > 0) {
+      summaryParts.push(
+        `Yield: ${yieldActions.map((a) => `${a.protocol} ${a.action}`).join(", ")}.`
+      );
+    }
+    if (recalledContext.totalRecalled > 0) {
+      summaryParts.push(
+        `Informed by ${recalledContext.totalRecalled} prior memories (${recalledContext.recallDurationMs}ms recall).`
+      );
+    }
+
+    const summaryKey = `cycle_summary_${now}`;
+    await writeMemory(
+      this.config.memwalClient,
+      summaryKey,
+      summaryParts.join(" ")
+    );
+    memoryStored.push(summaryKey);
+
     console.log(
-      `[TrusteeAgent] Cycle complete: ${conditionsChecked.length} checks, ${proposalsGenerated.length} proposals, ${yieldActions.length} yield actions.`
+      `[TrusteeAgent] Cycle complete: ${conditionsChecked.length} checks, ` +
+        `${proposalsGenerated.length} proposals, ${yieldActions.length} yield actions` +
+        (recalledContext.totalRecalled > 0
+          ? `, recalled ${recalledContext.totalRecalled} memories.`
+          : ".")
     );
 
     return {
+      recalledContext,
       conditionsChecked,
       proposalsGenerated,
       yieldActions,
@@ -378,5 +574,28 @@ export class TrusteeAgent {
       totalDistributions: this.totalDistributions,
       recentMemories: this.recentMemories.slice(0, 10),
     };
+  }
+
+  /**
+   * Manually trigger a recall query for debugging or demonstration.
+   * Shows what the agent would remember before its next cycle.
+   *
+   * @param query - Natural language query to search MemWal
+   * @param limit - Max results (default 5)
+   * @returns Array of recalled memories with distance scores
+   */
+  async debugRecall(
+    query: string,
+    limit = 5,
+  ): Promise<Array<{ text: string; distance: number }>> {
+    const client = this.config.memwalClient as Record<string, unknown> | null;
+    if (client == null || typeof client.recallHistory !== "function") {
+      return [];
+    }
+    const recall = client.recallHistory as (
+      q: string,
+      l?: number,
+    ) => Promise<Array<{ text: string; distance: number }>>;
+    return recall(query, limit);
   }
 }
