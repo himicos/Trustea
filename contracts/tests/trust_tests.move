@@ -41,6 +41,14 @@ const AGENT: address = @0xCCCC;
 const STRANGER: address = @0xDDDD;
 const PROTECTOR: address = @0xEEEE;
 const NEW_AGENT: address = @0xFFFF;
+const SUCCESSOR: address = @0x1111;
+
+/// 90 days in ms.
+const DMS_HEARTBEAT_PERIOD: u64 = 90 * 24 * 60 * 60 * 1_000;
+/// 14 days in ms.
+const DMS_GRACE_PERIOD: u64 = 14 * 24 * 60 * 60 * 1_000;
+/// 7 days in ms.
+const DMS_VETO_PERIOD: u64 = 7 * 24 * 60 * 60 * 1_000;
 
 // ---------------------------------------------------------------------------
 // Helper: create a trust and return its ID (revocable, default params)
@@ -123,6 +131,49 @@ fun setup_irrevocable_trust(scenario: &mut Scenario): ID {
     ts::next_tx(scenario, GRANTOR);
     let trust_obj = ts::take_shared<Trust>(scenario);
     let id = object::id(&trust_obj);
+    ts::return_shared(trust_obj);
+    id
+}
+
+/// Helper: create a trust with DMS enabled (successor + protector + beneficiary as activators).
+fun setup_trust_with_dms(scenario: &mut Scenario): ID {
+    ts::next_tx(scenario, GRANTOR);
+    let ctx = scenario.ctx();
+    let clk = clock::create_for_testing(ctx);
+
+    trust::create_trust(
+        b"DMS Trust".to_string(),
+        b"Trust with Dead Man's Switch".to_string(),
+        AGENT,
+        0,
+        true,
+        option::some(SUCCESSOR),
+        option::some(PROTECTOR),
+        &clk,
+        ctx,
+    );
+
+    clock::destroy_for_testing(clk);
+
+    ts::next_tx(scenario, GRANTOR);
+    let mut trust_obj = ts::take_shared<Trust>(scenario);
+    let id = object::id(&trust_obj);
+
+    // Configure DMS: 2-of-3 threshold (successor, protector, beneficiary).
+    let ctx2 = scenario.ctx();
+    let clk2 = clock::create_for_testing(ctx2);
+    trust::configure_dms(
+        &mut trust_obj,
+        DMS_HEARTBEAT_PERIOD,
+        DMS_GRACE_PERIOD,
+        DMS_VETO_PERIOD,
+        2, // threshold
+        vector[SUCCESSOR, PROTECTOR, BENEFICIARY],
+        &clk2,
+        ctx2,
+    );
+    clock::destroy_for_testing(clk2);
+
     ts::return_shared(trust_obj);
     id
 }
@@ -1198,6 +1249,377 @@ fun test_principal_income_tracking() {
 
         clock::destroy_for_testing(clk);
         ts::return_shared(dist);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 23: Configure DMS
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_configure_dms() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let trust = ts::take_shared<Trust>(&scenario);
+        assert!(trust::dms_enabled(&trust), 0);
+        assert!(trust::dms_heartbeat_period_ms(&trust) == DMS_HEARTBEAT_PERIOD, 1);
+        assert!(trust::dms_grace_period_ms(&trust) == DMS_GRACE_PERIOD, 2);
+        assert!(trust::dms_activation_threshold(&trust) == 2, 3);
+        assert!(trust::dms_activators(&trust).length() == 3, 4);
+        assert!(trust::dms_veto_period_ms(&trust) == DMS_VETO_PERIOD, 5);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 24: DMS heartbeat resets timer and clears votes
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_dms_heartbeat() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(1_000_000);
+
+        trust::dms_heartbeat(&mut trust, &clk, ctx);
+
+        assert!(trust::dms_last_heartbeat_at(&trust) == 1_000_000, 0);
+        assert!(trust::dms_vote_count(&trust) == 0, 1);
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 25: Full DMS flow — heartbeat expires → votes → trigger → execute
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_dms_full_flow() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    // Add beneficiary so they can vote.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"DMS beneficiary".to_string(),
+            1_000_000_000,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Advance time past heartbeat + grace period.
+    let expire_time = DMS_HEARTBEAT_PERIOD + DMS_GRACE_PERIOD + 1;
+
+    // Successor votes.
+    ts::next_tx(&mut scenario, SUCCESSOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time);
+
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        assert!(trust::dms_vote_count(&trust) == 1, 0);
+        assert!(trust::dms_triggered_at(&trust) == 0, 1);
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Protector votes (reaches threshold of 2).
+    ts::next_tx(&mut scenario, PROTECTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time + 1_000);
+
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        assert!(trust::dms_vote_count(&trust) == 2, 0);
+        assert!(trust::dms_triggered_at(&trust) > 0, 1);
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Execute after veto period passes.
+    ts::next_tx(&mut scenario, SUCCESSOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time + 1_000 + DMS_VETO_PERIOD + 1);
+
+        trust::dms_execute(&mut trust, &clk);
+
+        assert!(trust.status() == trust::status_dms_triggered(), 0);
+        assert!(trust.grantor() == SUCCESSOR, 1);
+        assert!(trust.successor_grantor().is_none(), 2);
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 26: DMS vote before expiry fails
+// ---------------------------------------------------------------------------
+
+#[test]
+#[expected_failure(abort_code = trustea::trust::EDMSHeartbeatNotExpired)]
+fun test_dms_vote_before_expiry_fails() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    ts::next_tx(&mut scenario, SUCCESSOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(1_000);
+
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 27: Grantor heartbeat clears pending votes
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_heartbeat_clears_votes() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    let expire_time = DMS_HEARTBEAT_PERIOD + DMS_GRACE_PERIOD + 1;
+
+    // Successor votes after expiry.
+    ts::next_tx(&mut scenario, SUCCESSOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time);
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        assert!(trust::dms_vote_count(&trust) == 1, 0);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Grantor comes back and heartbeats — clears everything.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time + 500);
+        trust::dms_heartbeat(&mut trust, &clk, ctx);
+        assert!(trust::dms_vote_count(&trust) == 0, 0);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 28: Trust protector vetoes triggered DMS
+// ---------------------------------------------------------------------------
+
+#[test]
+fun test_dms_protector_veto() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    let expire_time = DMS_HEARTBEAT_PERIOD + DMS_GRACE_PERIOD + 1;
+
+    // Add beneficiary so they can vote.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"DMS test".to_string(),
+            0,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Two votes to trigger.
+    ts::next_tx(&mut scenario, SUCCESSOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time);
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    ts::next_tx(&mut scenario, BENEFICIARY);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time + 1_000);
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        assert!(trust::dms_triggered_at(&trust) > 0, 0);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Protector vetoes within veto window.
+    ts::next_tx(&mut scenario, PROTECTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time + 2_000);
+        trust::dms_veto(&mut trust, &clk, ctx);
+        assert!(trust::dms_triggered_at(&trust) == 0, 0);
+        assert!(trust::dms_vote_count(&trust) == 0, 1);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 29: Non-activator cannot vote
+// ---------------------------------------------------------------------------
+
+#[test]
+#[expected_failure(abort_code = trustea::trust::ENotDMSActivator)]
+fun test_stranger_cannot_vote_dms() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    let expire_time = DMS_HEARTBEAT_PERIOD + DMS_GRACE_PERIOD + 1;
+
+    ts::next_tx(&mut scenario, STRANGER);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time);
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    scenario.end();
+}
+
+// ---------------------------------------------------------------------------
+// Test 30: Cannot execute DMS before veto period expires
+// ---------------------------------------------------------------------------
+
+#[test]
+#[expected_failure(abort_code = trustea::trust::EDMSVetoPeriodExpired)]
+fun test_dms_execute_before_veto_period_fails() {
+    let mut scenario = ts::begin(GRANTOR);
+    setup_trust_with_dms(&mut scenario);
+
+    let expire_time = DMS_HEARTBEAT_PERIOD + DMS_GRACE_PERIOD + 1;
+
+    // Add beneficiary for second vote.
+    ts::next_tx(&mut scenario, GRANTOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let clk = clock::create_for_testing(ctx);
+        trust::add_beneficiary(
+            &mut trust,
+            BENEFICIARY,
+            b"Alice".to_string(),
+            b"DMS test".to_string(),
+            0,
+            false,
+            &clk,
+            ctx,
+        );
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Two votes to trigger.
+    ts::next_tx(&mut scenario, SUCCESSOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time);
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    ts::next_tx(&mut scenario, BENEFICIARY);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time + 1_000);
+        trust::dms_vote_trigger(&mut trust, &clk, ctx);
+        clock::destroy_for_testing(clk);
+        ts::return_shared(trust);
+    };
+
+    // Try to execute immediately (within veto period) — should fail.
+    ts::next_tx(&mut scenario, SUCCESSOR);
+    {
+        let mut trust = ts::take_shared<Trust>(&scenario);
+        let ctx = scenario.ctx();
+        let mut clk = clock::create_for_testing(ctx);
+        clk.increment_for_testing(expire_time + 2_000);
+        trust::dms_execute(&mut trust, &clk);
+        clock::destroy_for_testing(clk);
         ts::return_shared(trust);
     };
 

@@ -24,6 +24,16 @@
 ///   0 = ACTIVE   -- normal operation
 ///   1 = PAUSED   -- no new deposits or distributions (emergency brake)
 ///   2 = CLOSED   -- trust has been wound up; no further changes
+///   3 = DMS_TRIGGERED -- Dead Man's Switch activated; successor has control
+///
+/// Dead Man's Switch (DMS):
+///   When enabled, the grantor must periodically call `dms_heartbeat` to prove
+///   they are still active. If the heartbeat lapses past a grace period,
+///   designated activators (successor, protector, beneficiaries) can vote to
+///   trigger the switch. Once threshold votes are reached the successor grantor
+///   takes control. The grantor can cancel at any point before execution by
+///   calling `dms_heartbeat` (which also clears votes). The trust protector
+///   can veto a triggered DMS within a veto window.
 module trustea::trust;
 
 use std::string::String;
@@ -35,6 +45,7 @@ use sui::clock::Clock;
 use sui::coin::{Self, Coin};
 use sui::event;
 use sui::sui::SUI;
+use sui::vec_map::{Self, VecMap};
 use trustea::agent_log;
 use trustea::beneficiary_nft;
 
@@ -48,6 +59,8 @@ const STATUS_ACTIVE: u8 = 0;
 const STATUS_PAUSED: u8 = 1;
 /// Trust status: closed / wound up -- immutable forever.
 const STATUS_CLOSED: u8 = 2;
+/// Trust status: Dead Man's Switch triggered -- successor now controls.
+const STATUS_DMS_TRIGGERED: u8 = 3;
 
 /// Rule type: age-based (condition_value = birth timestamp; unlocks when now >= condition_value).
 const RULE_TYPE_AGE: u8 = 0;
@@ -83,6 +96,15 @@ const ENotBeneficiary: u64 = 15;
 const ERequestAlreadyProcessed: u64 = 16;
 const EIrrevocableTrust: u64 = 17;
 const ENotGrantorOrProtector: u64 = 18;
+const EDMSNotEnabled: u64 = 19;
+const EDMSHeartbeatNotExpired: u64 = 20;
+const ENotDMSActivator: u64 = 21;
+const EDMSAlreadyTriggered: u64 = 22;
+const ENoSuccessorGrantor: u64 = 23;
+const EDMSNotTriggered: u64 = 24;
+const EDMSVetoPeriodExpired: u64 = 25;
+const EDMSThresholdNotMet: u64 = 26;
+const EAlreadyVoted: u64 = 27;
 
 // ---------------------------------------------------------------------------
 // Core data types
@@ -181,6 +203,25 @@ public struct Trust has key {
     total_distributed: u64,
     /// Holds Balance<T> for non-SUI coin types, keyed by type name string.
     additional_balances: Bag,
+    // -- Dead Man's Switch (DMS) fields --
+    /// Whether the DMS is enabled for this trust.
+    dms_enabled: bool,
+    /// How often (ms) the grantor must call dms_heartbeat (e.g. 90 days).
+    dms_heartbeat_period_ms: u64,
+    /// Grace period (ms) after heartbeat expires before votes can trigger DMS.
+    dms_grace_period_ms: u64,
+    /// Timestamp (ms) of last heartbeat from the grantor.
+    dms_last_heartbeat_at: u64,
+    /// Number of votes required to trigger the DMS.
+    dms_activation_threshold: u8,
+    /// Addresses authorized to vote for DMS activation.
+    dms_activators: vector<address>,
+    /// Current votes: activator address -> true.
+    dms_votes: VecMap<address, bool>,
+    /// Timestamp when DMS was triggered (0 if not triggered).
+    dms_triggered_at: u64,
+    /// Veto window (ms) after trigger during which protector can veto.
+    dms_veto_period_ms: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -301,6 +342,41 @@ public struct SuccessorGrantorSet has copy, drop {
     set_by: address,
 }
 
+public struct DMSHeartbeat has copy, drop {
+    trust_id: ID,
+    grantor: address,
+    timestamp: u64,
+    next_deadline: u64,
+}
+
+public struct DMSVoteCast has copy, drop {
+    trust_id: ID,
+    voter: address,
+    total_votes: u64,
+    threshold: u8,
+}
+
+public struct DMSTriggered has copy, drop {
+    trust_id: ID,
+    triggered_by: address,
+    new_grantor: address,
+    timestamp: u64,
+}
+
+public struct DMSVetoed has copy, drop {
+    trust_id: ID,
+    vetoed_by: address,
+    timestamp: u64,
+}
+
+public struct DMSConfigured has copy, drop {
+    trust_id: ID,
+    heartbeat_period_ms: u64,
+    grace_period_ms: u64,
+    activation_threshold: u8,
+    activator_count: u64,
+}
+
 // ---------------------------------------------------------------------------
 // Constructor
 // ---------------------------------------------------------------------------
@@ -354,6 +430,15 @@ public fun create_trust(
         total_deposited: 0,
         total_distributed: 0,
         additional_balances: bag::new(ctx),
+        dms_enabled: false,
+        dms_heartbeat_period_ms: 0,
+        dms_grace_period_ms: 0,
+        dms_last_heartbeat_at: 0,
+        dms_activation_threshold: 0,
+        dms_activators: vector[],
+        dms_votes: vec_map::empty(),
+        dms_triggered_at: 0,
+        dms_veto_period_ms: 0,
     };
 
     let trust_id = object::id(&trust);
@@ -1092,6 +1177,195 @@ public fun close_trust(trust: &mut Trust, ctx: &mut TxContext) {
 }
 
 // ---------------------------------------------------------------------------
+// Dead Man's Switch (DMS)
+// ---------------------------------------------------------------------------
+
+/// Enable and configure the Dead Man's Switch.
+///
+/// Only the grantor can enable DMS. A successor_grantor must already be set.
+/// Activators are the addresses allowed to vote for DMS trigger (typically
+/// the successor, trust protector, and/or beneficiaries).
+/// activation_threshold is how many activator votes are required (e.g. 2 of 3).
+public fun configure_dms(
+    trust: &mut Trust,
+    heartbeat_period_ms: u64,
+    grace_period_ms: u64,
+    veto_period_ms: u64,
+    activation_threshold: u8,
+    activators: vector<address>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(ctx.sender() == trust.grantor, ENotGrantor);
+    assert!(trust.status != STATUS_CLOSED, ETrustClosed);
+    assert!(trust.successor_grantor.is_some(), ENoSuccessorGrantor);
+    assert!((activation_threshold as u64) <= activators.length(), EDMSThresholdNotMet);
+    assert!(activation_threshold > 0, EDMSThresholdNotMet);
+
+    trust.dms_enabled = true;
+    trust.dms_heartbeat_period_ms = heartbeat_period_ms;
+    trust.dms_grace_period_ms = grace_period_ms;
+    trust.dms_veto_period_ms = veto_period_ms;
+    trust.dms_activation_threshold = activation_threshold;
+    trust.dms_activators = activators;
+    trust.dms_last_heartbeat_at = clock.timestamp_ms();
+    trust.dms_votes = vec_map::empty();
+    trust.dms_triggered_at = 0;
+
+    event::emit(DMSConfigured {
+        trust_id: object::id(trust),
+        heartbeat_period_ms,
+        grace_period_ms,
+        activation_threshold,
+        activator_count: trust.dms_activators.length(),
+    });
+}
+
+/// Grantor confirms they are alive. Resets the heartbeat timer and clears
+/// any pending DMS votes. Can be called at any time before DMS execution
+/// completes — this is the safety valve against accidental triggers.
+public fun dms_heartbeat(
+    trust: &mut Trust,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(ctx.sender() == trust.grantor, ENotGrantor);
+    assert!(trust.dms_enabled, EDMSNotEnabled);
+    assert!(trust.status != STATUS_CLOSED, ETrustClosed);
+    assert!(trust.status != STATUS_DMS_TRIGGERED, EDMSAlreadyTriggered);
+
+    let now = clock.timestamp_ms();
+    trust.dms_last_heartbeat_at = now;
+
+    // Clear any pending votes — grantor is alive, reset everything.
+    trust.dms_votes = vec_map::empty();
+    // Clear any pending trigger.
+    trust.dms_triggered_at = 0;
+
+    event::emit(DMSHeartbeat {
+        trust_id: object::id(trust),
+        grantor: trust.grantor,
+        timestamp: now,
+        next_deadline: now + trust.dms_heartbeat_period_ms,
+    });
+}
+
+/// An authorized activator votes to trigger the DMS.
+///
+/// Can only be called after the heartbeat has expired AND the grace period
+/// has passed. Once the activation_threshold is met, the DMS enters a
+/// "triggered pending" state where the trust protector has a veto window.
+public fun dms_vote_trigger(
+    trust: &mut Trust,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let caller = ctx.sender();
+    assert!(trust.dms_enabled, EDMSNotEnabled);
+    assert!(trust.status == STATUS_ACTIVE || trust.status == STATUS_PAUSED, ETrustNotActive);
+    assert!(trust.dms_triggered_at == 0, EDMSAlreadyTriggered);
+
+    // Caller must be an authorized activator.
+    assert!(trust.dms_activators.contains(&caller), ENotDMSActivator);
+
+    // Heartbeat must have expired + grace period passed.
+    let now = clock.timestamp_ms();
+    let deadline = trust.dms_last_heartbeat_at + trust.dms_heartbeat_period_ms + trust.dms_grace_period_ms;
+    assert!(now >= deadline, EDMSHeartbeatNotExpired);
+
+    // Must not have already voted.
+    assert!(!vec_map::contains(&trust.dms_votes, &caller), EAlreadyVoted);
+
+    vec_map::insert(&mut trust.dms_votes, caller, true);
+    let total_votes = vec_map::length(&trust.dms_votes);
+
+    event::emit(DMSVoteCast {
+        trust_id: object::id(trust),
+        voter: caller,
+        total_votes,
+        threshold: trust.dms_activation_threshold,
+    });
+
+    // If threshold met, mark as triggered (starts veto window).
+    if (total_votes >= (trust.dms_activation_threshold as u64)) {
+        trust.dms_triggered_at = now;
+
+        event::emit(DMSTriggered {
+            trust_id: object::id(trust),
+            triggered_by: caller,
+            new_grantor: *trust.successor_grantor.borrow(),
+            timestamp: now,
+        });
+    };
+}
+
+/// Execute the DMS after the trigger + veto period has passed.
+///
+/// Transfers grantor role to the successor. Anyone can call this once
+/// conditions are met (typically the successor or agent).
+public fun dms_execute(
+    trust: &mut Trust,
+    clock: &Clock,
+) {
+    assert!(trust.dms_enabled, EDMSNotEnabled);
+    assert!(trust.dms_triggered_at > 0, EDMSNotTriggered);
+    assert!(trust.status != STATUS_DMS_TRIGGERED, EDMSAlreadyTriggered);
+    assert!(trust.successor_grantor.is_some(), ENoSuccessorGrantor);
+
+    let now = clock.timestamp_ms();
+    let veto_deadline = trust.dms_triggered_at + trust.dms_veto_period_ms;
+    assert!(now >= veto_deadline, EDMSVetoPeriodExpired);
+
+    // Transfer control to successor.
+    let old_status = trust.status;
+    let new_grantor = *trust.successor_grantor.borrow();
+    trust.grantor = new_grantor;
+    trust.successor_grantor = option::none();
+    trust.status = STATUS_DMS_TRIGGERED;
+
+    event::emit(TrustStatusChanged {
+        trust_id: object::id(trust),
+        old_status,
+        new_status: STATUS_DMS_TRIGGERED,
+        changed_by: new_grantor,
+    });
+}
+
+/// Trust protector vetoes a triggered DMS within the veto window.
+///
+/// This resets the DMS to pre-trigger state (votes cleared, trigger timestamp
+/// cleared). The heartbeat timer is NOT reset — the grantor still needs to
+/// call dms_heartbeat to prove they're alive, or activators can vote again.
+public fun dms_veto(
+    trust: &mut Trust,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let caller = ctx.sender();
+    assert!(
+        trust.trust_protector.is_some() && caller == *trust.trust_protector.borrow(),
+        ENotGrantorOrProtector,
+    );
+    assert!(trust.dms_triggered_at > 0, EDMSNotTriggered);
+    assert!(trust.status != STATUS_DMS_TRIGGERED, EDMSAlreadyTriggered);
+
+    // Must be within veto window.
+    let now = clock.timestamp_ms();
+    let veto_deadline = trust.dms_triggered_at + trust.dms_veto_period_ms;
+    assert!(now < veto_deadline, EDMSVetoPeriodExpired);
+
+    // Reset trigger state.
+    trust.dms_triggered_at = 0;
+    trust.dms_votes = vec_map::empty();
+
+    event::emit(DMSVetoed {
+        trust_id: object::id(trust),
+        vetoed_by: caller,
+        timestamp: now,
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Read-only accessors
 // ---------------------------------------------------------------------------
 
@@ -1147,10 +1421,22 @@ public fun req_requested_at(req: &DistributionRequest): u64 { req.requested_at }
 public fun req_is_approved(req: &DistributionRequest): bool { req.is_approved }
 public fun req_is_denied(req: &DistributionRequest): bool { req.is_denied }
 
+// DMS accessors
+public fun dms_enabled(trust: &Trust): bool { trust.dms_enabled }
+public fun dms_heartbeat_period_ms(trust: &Trust): u64 { trust.dms_heartbeat_period_ms }
+public fun dms_grace_period_ms(trust: &Trust): u64 { trust.dms_grace_period_ms }
+public fun dms_last_heartbeat_at(trust: &Trust): u64 { trust.dms_last_heartbeat_at }
+public fun dms_activation_threshold(trust: &Trust): u8 { trust.dms_activation_threshold }
+public fun dms_activators(trust: &Trust): &vector<address> { &trust.dms_activators }
+public fun dms_vote_count(trust: &Trust): u64 { vec_map::length(&trust.dms_votes) }
+public fun dms_triggered_at(trust: &Trust): u64 { trust.dms_triggered_at }
+public fun dms_veto_period_ms(trust: &Trust): u64 { trust.dms_veto_period_ms }
+
 // Status constants (for external consumers)
 public fun status_active(): u8 { STATUS_ACTIVE }
 public fun status_paused(): u8 { STATUS_PAUSED }
 public fun status_closed(): u8 { STATUS_CLOSED }
+public fun status_dms_triggered(): u8 { STATUS_DMS_TRIGGERED }
 
 // ---------------------------------------------------------------------------
 // Internal helpers
