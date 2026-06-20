@@ -1,0 +1,39 @@
+{
+  "headers": {
+    "/**/*.html": {
+      "Cache-Control": "public, max-age=300, must-revalidate"
+    },
+    "/_next/static/**/*": {
+      "Cache-Control": "public, max-age=31536000, immutable"
+    }
+  },
+  "routes": {
+    "/app": "/app/index.html",
+    "/app/": "/app/index.html",
+    "/app/agent": "/app/agent/index.html",
+    "/app/agent/": "/app/agent/index.html",
+    "/app/beneficiary": "/app/beneficiary/index.html",
+    "/app/beneficiary/": "/app/beneficiary/index.html",
+    "/app/create": "/app/create/index.html",
+    "/app/create/": "/app/create/index.html",
+    "/app/memory": "/app/memory/index.html",
+    "/app/memory/": "/app/memory/index.html",
+    "/app/settings": "/app/settings/index.html",
+    "/app/settings/": "/app/settings/index.html",
+    "/app/trust": "/app/trust/index.html",
+    "/app/trust/": "/app/trust/index.html"
+  },
+  "metadata": {
+    "link": "https://github.com/himicos/Trustea",
+    "image_url": "",
+    "description": "Write trust rules in plain English. AI enforces them on-chain. On-chain trust infrastructure on Sui.",
+    "project_url": "https://github.com/himicos/Trustea",
+    "creator": "Nik Stoletov, Anna Shcherbinina"
+  },
+  "site_name": "Trustea",
+  "object_id": "0x47019898a51e7416d3d7c38ff1aae6624eb6e9f9c1907ab564d246622df8c50c",
+  "ignore": [
+    "__next.*.txt",
+    "*.txt"
+  ]
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" font-family="-apple-system,Inter,sans-serif">
+  <rect width="800" height="200" fill="#0A0F0D"/>
+  <g transform="translate(70 36) scale(0.064)">
+    <polygon fill="#10B981" points="928 781 1021 951 784.5 1371.97 1618 1371.97 1530.32 1544 509 1539 928 781"/>
+    <polygon fill="#059669" points="1618 1371.97 784.5 1371.97 874.93 1211 1346 1211 923.1 456 1110.06 456 1618 1371.97"/>
+    <polygon fill="#0D6E4F" points="418 1372.74 509 1539 928 781 1162.32 1211 1346 1211 923.1 456 418 1372.74"/>
+  </g>
+  <text x="240" y="125" font-size="78" font-weight="600" fill="#F2F7F4" letter-spacing="-2">Trustea</text>
+</svg>

@@ -9,10 +9,27 @@ import {
 // useSuiClient() returns the dapp-kit client — cast as needed
 
 // Package ID — keep in sync with lib/config.ts
-const PACKAGE_ID =
-  "0xe2fb4534f87cb3e8d9d9d80b738ca3dd505100821e1481178af9801019365804";
+export const PACKAGE_ID =
+  "0xa3e912b4d4be96e1206bd76cdadb512fe151b9dfd6921bd9afc9be1d97a8487a";
+
+// External proxy holds ANTHROPIC + MEMWAL keys (Walrus Sites = no server).
+// In dev, point at local Next routes via NEXT_PUBLIC_API_BASE=/api.
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ?? "http://147.45.240.145:9007/api";
 
 // ─── Types (mirrors lib/trust-reader.ts) ───
+
+export interface DMSState {
+  enabled: boolean;
+  heartbeatPeriodMs: number;
+  gracePeriodMs: number;
+  lastHeartbeatAt: number;
+  activationThreshold: number;
+  activators: string[];
+  voteCount: number;
+  triggeredAt: number;
+  vetoPeriodMs: number;
+}
 
 export interface TrustState {
   id: string;
@@ -32,6 +49,7 @@ export interface TrustState {
   trustProtector: string | null;
   totalDeposited: bigint;
   totalDistributed: bigint;
+  dms: DMSState;
 }
 
 export interface RuleState {
@@ -138,12 +156,114 @@ export function useMyBeneficiaryNFTs() {
 }
 
 /**
+ * Full parsed state for every trust the connected wallet created.
+ * Powers the dashboard hero metrics (TVL, distributed, next unlock).
+ */
+export function useMyTrustsDetails() {
+  const { data: myTrusts } = useMyTrusts();
+  const suiClient = useSuiClient();
+  const ids = (myTrusts ?? []).map((t) => t.trustId);
+
+  return useQuery({
+    queryKey: ["my-trusts-details", ids.join(",")],
+    enabled: ids.length > 0,
+    refetchInterval: 15_000,
+    queryFn: async (): Promise<TrustState[]> => {
+      const response = await (suiClient as any).multiGetObjects({
+        ids,
+        options: { showContent: true },
+      });
+      return (response as Array<any>)
+        .filter((r) => r.data?.content?.dataType === "moveObject")
+        .map((r) => parseTrustFields(r.data.content.fields as Record<string, unknown>));
+    },
+  });
+}
+
+/** Next future unlock (time/age rule) across a set of trusts, or null. */
+export function nextUnlockMs(trusts: TrustState[], now: number): number | null {
+  let min: number | null = null;
+  for (const t of trusts) {
+    for (const r of t.rules) {
+      if (!r.isActive) continue;
+      if (r.ruleType !== 0 && r.ruleType !== 1) continue;
+      const ts = Number(r.conditionValue);
+      if (ts > now && (min === null || ts < min)) min = ts;
+    }
+  }
+  return min;
+}
+
+/**
+ * Live feed of all Trustea contract events (newest first).
+ */
+export interface TrustEvent {
+  type: string;
+  /** Event name without the package/module prefix, e.g. "TrustCreated". */
+  name: string;
+  timestampMs: number;
+  txDigest: string;
+  fields: Record<string, unknown>;
+}
+
+export function useTrustEvents(limit = 30) {
+  const suiClient = useSuiClient();
+
+  return useQuery({
+    queryKey: ["trust-events", limit],
+    refetchInterval: 15_000,
+    queryFn: async (): Promise<TrustEvent[]> => {
+      const events = await (suiClient as any).queryEvents({
+        query: { MoveModule: { package: PACKAGE_ID, module: "trust" } },
+        order: "descending",
+        limit,
+      });
+      return (events.data as Array<any>).map((e) => ({
+        type: String(e.type),
+        name: String(e.type).split("::").pop() ?? "Event",
+        timestampMs: Number(e.timestampMs ?? 0),
+        txDigest: String(e.id?.txDigest ?? ""),
+        fields: (e.parsedJson ?? {}) as Record<string, unknown>,
+      }));
+    },
+  });
+}
+
+/**
+ * Recall agent memories from MemWal via the API route.
+ */
+export interface MemoryRecall {
+  demo: boolean;
+  memories: Array<{ namespace: string; text: string; distance: number }>;
+}
+
+export function useAgentMemories(query: string, trustIds: string[]) {
+  // Sort for stable cache key
+  const sortedIds = [...trustIds].sort();
+  return useQuery({
+    queryKey: ["agent-memories", query, sortedIds.join(",")],
+    queryFn: async (): Promise<MemoryRecall> => {
+      const res = await fetch(`${API_BASE}/memories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, trustIds: sortedIds }),
+      });
+      if (!res.ok) return { demo: true, memories: [] };
+      return res.json();
+    },
+    staleTime: 30_000,
+    // No trust IDs → don't even fetch (avoids leaking data to disconnected viewers)
+    enabled: sortedIds.length > 0,
+  });
+}
+
+/**
  * Translate a plain English rule via the API route.
  */
 export function useTranslateRule() {
   return useMutation({
     mutationFn: async (rule: string) => {
-      const res = await fetch("/api/translate-rule", {
+      const res = await fetch(`${API_BASE}/translate-rule`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rule }),
@@ -170,6 +290,59 @@ export function useTrusteaTransaction() {
   };
 
   return { execute };
+}
+
+// ─── DMS Helpers ───
+
+/** Status label for the trust. */
+export function trustStatusLabel(status: number): string {
+  switch (status) {
+    case 0: return "Active";
+    case 1: return "Paused";
+    case 2: return "Closed";
+    case 3: return "DMS Triggered";
+    default: return "Unknown";
+  }
+}
+
+/** Dot class for trust status. */
+export function trustStatusDot(status: number): string {
+  switch (status) {
+    case 0: return "dot-active";
+    case 1: return "dot-pending";
+    case 2: return "dot-inactive";
+    case 3: return "dot-error";
+    default: return "dot-inactive";
+  }
+}
+
+/** Compute DMS phase from trust state + current time. */
+export type DMSPhase = "disabled" | "green" | "yellow" | "orange" | "red" | "triggered" | "executed";
+
+export function getDMSPhase(dms: DMSState, status: number, now: number): DMSPhase {
+  if (!dms.enabled) return "disabled";
+  if (status === 3) return "executed";
+  if (dms.triggeredAt > 0) return "triggered";
+
+  const deadline = dms.lastHeartbeatAt + dms.heartbeatPeriodMs;
+  const graceEnd = deadline + dms.gracePeriodMs;
+  const warningStart = deadline - (7 * 24 * 60 * 60 * 1000); // 7 days before
+
+  if (now >= graceEnd) return "red";
+  if (now >= deadline) return "orange";
+  if (now >= warningStart) return "yellow";
+  return "green";
+}
+
+/** Format milliseconds as a human-readable countdown. */
+export function formatCountdown(ms: number): string {
+  if (ms <= 0) return "Expired";
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  if (days > 0) return `${days}d ${hours}h`;
+  const mins = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
 // ─── Field parsers ───
@@ -231,5 +404,27 @@ function parseTrustFields(fields: Record<string, unknown>): TrustState {
     trustProtector: parseOption(fields.trust_protector),
     totalDeposited: BigInt(String(fields.total_deposited ?? 0)),
     totalDistributed: BigInt(String(fields.total_distributed ?? 0)),
+    dms: {
+      enabled: Boolean(fields.dms_enabled),
+      heartbeatPeriodMs: Number(fields.dms_heartbeat_period_ms ?? 0),
+      gracePeriodMs: Number(fields.dms_grace_period_ms ?? 0),
+      lastHeartbeatAt: Number(fields.dms_last_heartbeat_at ?? 0),
+      activationThreshold: Number(fields.dms_activation_threshold ?? 0),
+      activators: Array.isArray(fields.dms_activators) ? fields.dms_activators : [],
+      voteCount: parseDMSVoteCount(fields.dms_votes),
+      triggeredAt: Number(fields.dms_triggered_at ?? 0),
+      vetoPeriodMs: Number(fields.dms_veto_period_ms ?? 0),
+    },
   };
+}
+
+function parseDMSVoteCount(raw: unknown): number {
+  if (raw == null) return 0;
+  if (typeof raw === "object" && raw !== null) {
+    // VecMap is serialized as { fields: { contents: [...] } }
+    const fields = "fields" in raw ? (raw as any).fields : raw;
+    const contents = fields?.contents;
+    if (Array.isArray(contents)) return contents.length;
+  }
+  return 0;
 }

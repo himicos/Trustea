@@ -9,3 +9,5 @@ build/
 *.log
 .turbo/
 .claude/
+_bin/
+_ref/
