@@ -55,6 +55,55 @@ export const DEMO_RECALL_MEMORIES = [
   },
 ] as const;
 
+/** Synthetic AI translation used in demo mode so the wizard works without the external API. */
+export function getDemoRuleTranslation(text: string) {
+  const lower = text.toLowerCase();
+  const amountMatch = text.match(/\b(\d+(?:\.\d+)?)\s*SUI\b/i);
+  const pctMatch = text.match(/\b(\d+(?:\.\d+)?)%/);
+  const isPercentage = !!pctMatch;
+  const amount = isPercentage
+    ? parseFloat(pctMatch![1])
+    : amountMatch
+      ? parseFloat(amountMatch[1])
+      : 100;
+
+  if (/\bturn(?:s)?\s+\d+\b|age\s*\d+/i.test(lower)) {
+    const ageMatch = lower.match(/\bturn(?:s)?\s+(\d+)\b|age\s*(\d+)/);
+    const age = parseInt(ageMatch?.[1] ?? ageMatch?.[2] ?? "25");
+    const timestamp = Math.round(Date.now() + age * 365.25 * 24 * 60 * 60 * 1000);
+    return {
+      rule: {
+        ruleType: "age",
+        amount,
+        isPercentage,
+        conditionDescription: `Beneficiary reaches age ${age}`,
+        conditionParams: { timestamp },
+      },
+      explanation: `Release ${isPercentage ? amount + "%" : amount + " SUI"} when the beneficiary reaches age ${age}.`,
+      confidence: 0.93,
+      warnings: [] as string[],
+    };
+  }
+
+  const periodMs = /annual|year|yearly/i.test(lower)
+    ? 365 * 24 * 60 * 60 * 1000
+    : 30 * 24 * 60 * 60 * 1000;
+  const periodLabel = periodMs === 365 * 24 * 60 * 60 * 1000 ? "annual" : "monthly";
+
+  return {
+    rule: {
+      ruleType: "periodic",
+      amount,
+      isPercentage,
+      conditionDescription: `${periodLabel.charAt(0).toUpperCase() + periodLabel.slice(1)} distribution`,
+      conditionParams: { periodMs },
+    },
+    explanation: `Distribute ${isPercentage ? amount + "%" : amount + " SUI"} on a recurring ${periodLabel} basis.`,
+    confidence: 0.91,
+    warnings: [] as string[],
+  };
+}
+
 // Default placeholder for the wizard rule input (real placeholder stays the same,
 // but in demo mode we pre-populate the text box).
 export const DEMO_RULE_SUGGESTIONS = [

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import {
   useMyTrusts,
@@ -11,6 +12,7 @@ import {
 import { Vault, Fingerprint, Plus, Wallet } from "lucide-react";
 import Link from "next/link";
 import { Onboarding, useFirstRun } from "@/components/onboarding";
+import { isDemoMode } from "@/lib/demo-mode";
 
 export default function Dashboard() {
   const account = useCurrentAccount();
@@ -146,7 +148,12 @@ export default function Dashboard() {
 
 function HeroMetrics({ trustCount }: { trustCount: number }) {
   const { data: details } = useMyTrustsDetails();
-  const now = Date.now();
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   const tvl = (details ?? []).reduce((sum, t) => sum + Number(t.balance) / 1e9, 0);
   const distributed = (details ?? []).reduce(
@@ -154,7 +161,17 @@ function HeroMetrics({ trustCount }: { trustCount: number }) {
     0,
   );
   const beneficiaries = (details ?? []).reduce((sum, t) => sum + t.beneficiaries.length, 0);
-  const unlock = details ? nextUnlockMs(details, now) : null;
+
+  // Compute next unlock from real rules; if none, fall back to a synthetic monthly
+  // countdown in demo mode so the metric is always meaningful during a recording.
+  const rawUnlock = details ? nextUnlockMs(details, now) : null;
+  let unlock = rawUnlock;
+  if (unlock === null && isDemoMode() && details && details.length > 0) {
+    const base = details[0].createdAt > 0 ? details[0].createdAt : now;
+    const period = 30 * 24 * 60 * 60 * 1000;
+    const elapsed = Math.max(0, now - base);
+    unlock = base + Math.max(1, Math.ceil(elapsed / period)) * period;
+  }
 
   return (
     <div className="hero-card mb-8">

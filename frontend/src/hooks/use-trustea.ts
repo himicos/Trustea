@@ -180,15 +180,28 @@ export function useMyTrustsDetails() {
   });
 }
 
-/** Next future unlock (time/age rule) across a set of trusts, or null. */
+/** Next future unlock across a set of trusts, or null.
+ *  Types 0/1 (age/time): conditionValue is a unix timestamp.
+ *  Type 3 (periodic):    conditionValue is period in ms; compute next occurrence from createdAt.
+ */
 export function nextUnlockMs(trusts: TrustState[], now: number): number | null {
   let min: number | null = null;
   for (const t of trusts) {
     for (const r of t.rules) {
       if (!r.isActive) continue;
-      if (r.ruleType !== 0 && r.ruleType !== 1) continue;
-      const ts = Number(r.conditionValue);
-      if (ts > now && (min === null || ts < min)) min = ts;
+      let ts: number | null = null;
+      if (r.ruleType === 0 || r.ruleType === 1) {
+        const cv = Number(r.conditionValue);
+        if (cv > now) ts = cv;
+      } else if (r.ruleType === 3) {
+        // conditionValue holds the period in ms; fall back to 30 days when absent/zero
+        const period = Number(r.conditionValue) || (30 * 24 * 60 * 60 * 1000);
+        const base = t.createdAt > 0 ? t.createdAt : now;
+        const elapsed = Math.max(0, now - base);
+        const cycles = Math.max(1, Math.ceil(elapsed / period));
+        ts = base + cycles * period;
+      }
+      if (ts !== null && (min === null || ts < min)) min = ts;
     }
   }
   return min;

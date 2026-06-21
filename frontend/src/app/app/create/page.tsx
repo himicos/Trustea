@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
 import { useTrusteaTransaction, useTranslateRule, PACKAGE_ID } from "@/hooks/use-trustea";
-import { isDemoMode, DEMO_RULE_SUGGESTIONS } from "@/lib/demo-mode";
+import { isDemoMode, DEMO_RULE_SUGGESTIONS, getDemoRuleTranslation } from "@/lib/demo-mode";
 import {
   Plus,
   Trash2,
@@ -149,14 +149,18 @@ export default function CreateTrustPage() {
   async function handleTranslateRule(index: number) {
     const draft = rules[index];
     if (!draft?.text.trim() || draft.translating) return;
+    setError(null);
     setRules((prev) => prev.map((r, i) => (i === index ? { ...r, translating: true } : r)));
     try {
-      const result = await translateRule.mutateAsync(draft.text);
+      const result = isDemoMode()
+        ? getDemoRuleTranslation(draft.text)
+        : await translateRule.mutateAsync(draft.text);
       setRules((prev) =>
         prev.map((r, i) => (i === index ? { ...r, translation: result, translating: false } : r)),
       );
-    } catch {
+    } catch (err) {
       setRules((prev) => prev.map((r, i) => (i === index ? { ...r, translating: false } : r)));
+      setError(`AI translation failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
