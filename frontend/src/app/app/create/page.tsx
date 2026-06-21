@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { useTrusteaTransaction, useTranslateRule, PACKAGE_ID } from "@/hooks/use-trustea";
+import {
+  useTrusteaTransaction,
+  useTranslateRule,
+  useTranslateTrust,
+  PACKAGE_ID,
+  type TrustDraftSpec,
+} from "@/hooks/use-trustea";
 import { isDemoMode, DEMO_RULE_SUGGESTIONS, getDemoRuleTranslation } from "@/lib/demo-mode";
 import {
   Plus,
@@ -22,6 +28,7 @@ import {
   HandCoins,
   AlertTriangle,
   Loader2,
+  Link2,
 } from "lucide-react";
 
 const STEPS = ["Basics", "Roles", "Beneficiaries", "Rules", "Safety", "Fund"] as const;
@@ -91,6 +98,7 @@ export default function CreateTrustPage() {
   const suiClient = useSuiClient();
   const { execute } = useTrusteaTransaction();
   const translateRule = useTranslateRule();
+  const translateTrust = useTranslateTrust();
 
   const [step, setStep] = useState(0);
 
@@ -126,8 +134,55 @@ export default function CreateTrustPage() {
   const [dmsVetoDays, setDmsVetoDays] = useState(7);
   const [dmsThreshold, setDmsThreshold] = useState(1);
   const [dmsActivators, setDmsActivators] = useState<string[]>([""]);
+  // Unit applied to all three DMS periods + override-period. "days" for real,
+  // "minutes" for demo lifecycle in under 5 min. Always stored as user-facing
+  // number; conversion to ms happens at PTB build time.
+  const [periodUnit, setPeriodUnit] = useState<"days" | "minutes">("days");
+  const unitMs = periodUnit === "minutes" ? 60_000 : 86_400_000;
 
   const [depositSui, setDepositSui] = useState("");
+
+  // Quick Start: plain-English trust description → AI prefill of every wizard field
+  const [quickText, setQuickText] = useState("");
+  const [quickApplied, setQuickApplied] = useState<TrustDraftSpec | null>(null);
+  const [quickErr, setQuickErr] = useState<string | null>(null);
+
+  async function applyQuickStart() {
+    if (!quickText.trim() || translateTrust.isPending) return;
+    setQuickErr(null);
+    try {
+      const spec = await translateTrust.mutateAsync(quickText.trim());
+      // Apply spec to every relevant state slice. Existing user input is overwritten —
+      // banner copy says so; user clicks Continue afterwards to edit.
+      setName(spec.name);
+      setDescription(spec.description);
+      setIsRevocable(spec.isRevocable);
+      if (spec.dms.successorGrantor) setSuccessorGrantor(spec.dms.successorGrantor);
+      setBeneficiaries(
+        spec.beneficiaries.map((b) => ({
+          name: b.name,
+          address: b.address,
+          allocation: b.allocation ? String(b.allocation) : "",
+          isPercentage: b.isPercentage,
+          conditions: b.conditions,
+        })),
+      );
+      setRules(
+        spec.rules.length > 0
+          ? spec.rules.map((r) => ({
+              text: r.text,
+              beneficiaryIndex: r.beneficiaryIndex,
+            }))
+          : [{ text: "", beneficiaryIndex: 0 }],
+      );
+      setDmsEnabled(spec.dms.enabled);
+      if (spec.dms.heartbeatDays) setDmsHeartbeatDays(spec.dms.heartbeatDays);
+      if (spec.depositSui > 0) setDepositSui(String(spec.depositSui));
+      setQuickApplied(spec);
+    } catch (e) {
+      setQuickErr(String(e));
+    }
+  }
 
   const [deployPhase, setDeployPhase] = useState<"idle" | "creating" | "configuring" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -260,9 +315,9 @@ export default function CreateTrustPage() {
             target: `${PACKAGE_ID}::trust::configure_dms`,
             arguments: [
               tx2.object(trustId),
-              tx2.pure.u64(dmsHeartbeatDays * 24 * 60 * 60 * 1000),
-              tx2.pure.u64(dmsGraceDays * 24 * 60 * 60 * 1000),
-              tx2.pure.u64(dmsVetoDays * 24 * 60 * 60 * 1000),
+              tx2.pure.u64(dmsHeartbeatDays * unitMs),
+              tx2.pure.u64(dmsGraceDays * unitMs),
+              tx2.pure.u64(dmsVetoDays * unitMs),
               tx2.pure.u8(Math.min(dmsThreshold, validActivators.length)),
               tx2.pure.vector("address", validActivators),
               tx2.object("0x6"),
@@ -324,6 +379,90 @@ export default function CreateTrustPage() {
           </div>
         ))}
       </div>
+
+      {/* Quick Start — full trust from one sentence */}
+      {step === 0 && (
+        <div className="card-glow mb-4 animate-fade-up">
+          <div className="flex items-start gap-3 mb-3">
+            <div className="w-9 h-9 rounded-xl bg-green-surface flex items-center justify-center shrink-0">
+              <Sparkles size={17} className="text-green-light" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-sm">Quick Start — describe your trust</h3>
+              <p className="text-xs text-text-muted mt-0.5 leading-relaxed">
+                One paragraph in plain English. The AI fills every step below — review and tweak before deploy.
+              </p>
+            </div>
+          </div>
+          <textarea
+            value={quickText}
+            onChange={(e) => setQuickText(e.target.value)}
+            placeholder='e.g. "Set up a trust for my daughter Alice. Give her 100 SUI monthly while she is enrolled in university. Full inheritance when she turns 30. Fund with 0.05 SUI."'
+            rows={3}
+            className="mb-2"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={applyQuickStart}
+              disabled={!quickText.trim() || translateTrust.isPending}
+              className="btn btn-primary btn-sm"
+            >
+              {translateTrust.isPending ? (
+                <><Loader2 size={14} className="animate-spin" /> Generating…</>
+              ) : (
+                <><Sparkles size={14} /> Generate trust</>
+              )}
+            </button>
+            {quickApplied && (
+              <span className="text-xs text-green-light flex items-center gap-1.5">
+                <Check size={13} /> Applied — {quickApplied.beneficiaries.length} beneficiaries · {quickApplied.rules.length} rules
+              </span>
+            )}
+          </div>
+
+          {quickApplied && (
+            <div className="card-flat mt-3 !p-3 space-y-2">
+              <p className="text-xs text-text-secondary leading-relaxed">
+                <span className="text-text-muted">AI interpretation:</span> {quickApplied.explanation}
+              </p>
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-text-muted">Confidence</span>
+                <div className="flex-1 h-1.5 rounded-full bg-border overflow-hidden">
+                  <div
+                    className={`h-full rounded-full ${
+                      quickApplied.confidence >= 0.9
+                        ? "bg-green-light"
+                        : quickApplied.confidence >= 0.7
+                          ? "bg-warning"
+                          : "bg-error"
+                    }`}
+                    style={{ width: `${Math.round(quickApplied.confidence * 100)}%` }}
+                  />
+                </div>
+                <span className="font-mono text-text-muted">
+                  {Math.round(quickApplied.confidence * 100)}%
+                </span>
+              </div>
+              {quickApplied.warnings.length > 0 && (
+                <div className="space-y-1">
+                  {quickApplied.warnings.map((w, i) => (
+                    <p
+                      key={i}
+                      className="text-xs text-warning flex items-start gap-1.5"
+                    >
+                      <AlertTriangle size={11} className="shrink-0 mt-0.5" /> {w}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {quickErr && (
+            <p className="text-xs text-error break-all mt-2">{quickErr}</p>
+          )}
+        </div>
+      )}
 
       {/* Form card */}
       <div className="card mb-6 animate-scale-in">
@@ -440,9 +579,16 @@ export default function CreateTrustPage() {
                     </div>
                     <div>
                       <Label>Wallet Address</Label>
-                      <input type="text" value={b.address}
-                        onChange={(e) => updateBen(i, { address: e.target.value })}
-                        placeholder="0x..." className="font-mono text-sm" />
+                      <div className="flex gap-2">
+                        <input type="text" value={b.address}
+                          onChange={(e) => updateBen(i, { address: e.target.value })}
+                          placeholder="0x..." className="font-mono text-sm flex-1" />
+                        <CopyInviteButton
+                          address={b.address}
+                          beneficiaryName={b.name}
+                          trustName={name}
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -588,6 +734,25 @@ export default function CreateTrustPage() {
                     <p className="text-sm text-warning font-medium">Set a Successor Grantor in the Roles step first.</p>
                   </div>
                 )}
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-text-muted">Time unit</span>
+                  <div className="flex border border-border rounded-lg overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setPeriodUnit("days")}
+                      className={`px-3 py-1 transition-colors ${periodUnit === "days" ? "bg-green-primary text-white" : "text-text-muted hover:text-text-primary"}`}
+                    >
+                      days
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPeriodUnit("minutes")}
+                      className={`px-3 py-1 transition-colors border-l border-border ${periodUnit === "minutes" ? "bg-green-primary text-white" : "text-text-muted hover:text-text-primary"}`}
+                    >
+                      minutes
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <Label>Heartbeat</Label>
@@ -595,7 +760,9 @@ export default function CreateTrustPage() {
                       <input type="number" value={dmsHeartbeatDays}
                         onChange={(e) => setDmsHeartbeatDays(Number(e.target.value))}
                         min={1} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">d</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">
+                        {periodUnit === "minutes" ? "m" : "d"}
+                      </span>
                     </div>
                   </div>
                   <div>
@@ -604,7 +771,9 @@ export default function CreateTrustPage() {
                       <input type="number" value={dmsGraceDays}
                         onChange={(e) => setDmsGraceDays(Number(e.target.value))}
                         min={1} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">d</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">
+                        {periodUnit === "minutes" ? "m" : "d"}
+                      </span>
                     </div>
                   </div>
                   <div>
@@ -613,7 +782,9 @@ export default function CreateTrustPage() {
                       <input type="number" value={dmsVetoDays}
                         onChange={(e) => setDmsVetoDays(Number(e.target.value))}
                         min={1} />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">d</span>
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">
+                        {periodUnit === "minutes" ? "m" : "d"}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -672,7 +843,7 @@ export default function CreateTrustPage() {
               <ReviewRow label="Type" value={isRevocable ? "Revocable" : "Irrevocable"} />
               <ReviewRow label="Beneficiaries" value={String(beneficiaries.filter((b) => b.address.trim()).length)} />
               <ReviewRow label="Rules" value={String(rules.filter((r) => r.translation).length)} />
-              <ReviewRow label="Dead Man's Switch" value={dmsEnabled && successorGrantor ? `${dmsHeartbeatDays}d heartbeat` : "Off"} />
+              <ReviewRow label="Dead Man's Switch" value={dmsEnabled && successorGrantor ? `${dmsHeartbeatDays}${periodUnit === "minutes" ? "m" : "d"} heartbeat` : "Off"} />
               <ReviewRow label="Initial Deposit" value={depositSui ? `${depositSui} SUI` : "None"} />
             </div>
 
@@ -721,6 +892,51 @@ export default function CreateTrustPage() {
   function updateRule(i: number, patch: Partial<RuleDraft>) {
     setRules((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   }
+}
+
+function CopyInviteButton({
+  address,
+  beneficiaryName,
+  trustName,
+}: {
+  address: string;
+  beneficiaryName: string;
+  trustName: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const disabled = !address || !address.startsWith("0x");
+
+  function handleCopy() {
+    if (disabled) return;
+    const params = new URLSearchParams();
+    params.set("invitedAs", address);
+    if (beneficiaryName) params.set("name", beneficiaryName);
+    if (trustName) params.set("trust", trustName);
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : "https://trustea.fawesome.dev";
+    const url = `${origin}/app?${params.toString()}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      disabled={disabled}
+      className="btn btn-secondary !min-h-0 !px-3 shrink-0 text-xs"
+      title={
+        disabled
+          ? "Enter a wallet address first"
+          : "Copy a share link the beneficiary can open"
+      }
+    >
+      {copied ? <Check size={13} /> : <Link2 size={13} />}
+      {copied ? "Copied" : "Invite link"}
+    </button>
+  );
 }
 
 function ConfidenceBar({ value }: { value: number }) {

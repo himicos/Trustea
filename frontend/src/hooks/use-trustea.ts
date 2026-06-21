@@ -287,6 +287,41 @@ export function useTranslateRule() {
   });
 }
 
+/** Spec returned by /translate-trust — shape matches wizard local state. */
+export interface TrustDraftSpec {
+  name: string;
+  description: string;
+  isRevocable: boolean;
+  beneficiaries: Array<{
+    name: string;
+    address: string;
+    allocation: number;
+    isPercentage: boolean;
+    conditions: string;
+  }>;
+  rules: Array<{ text: string; beneficiaryIndex: number }>;
+  dms: { enabled: boolean; heartbeatDays: number; successorGrantor: string };
+  depositSui: number;
+  explanation: string;
+  confidence: number;
+  warnings: string[];
+}
+
+/** Translate a free-form trust description into a full wizard pre-fill. */
+export function useTranslateTrust() {
+  return useMutation<TrustDraftSpec, Error, string>({
+    mutationFn: async (text: string) => {
+      const res = await fetch(`${API_BASE}/translate-trust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+}
+
 /**
  * Execute a Sui transaction and invalidate relevant queries.
  */
