@@ -51,6 +51,7 @@ function Nav() {
         <div className="hidden md:flex items-center gap-8">
           <a href="#how" className="landing-nav-link">How it works</a>
           <a href="#memory" className="landing-nav-link">Memory</a>
+          <a href="/pitch" target="_blank" rel="noopener noreferrer" className="landing-nav-link">Pitch</a>
           <a href="#features" className="landing-nav-link">Features</a>
           <a href="#comparison" className="landing-nav-link">vs Traditional</a>
           <a href="#team" className="landing-nav-link">Team</a>

@@ -21,7 +21,9 @@
     "/app/settings": "/app/settings/index.html",
     "/app/settings/": "/app/settings/index.html",
     "/app/trust": "/app/trust/index.html",
-    "/app/trust/": "/app/trust/index.html"
+    "/app/trust/": "/app/trust/index.html",
+    "/pitch": "/pitch.html",
+    "/pitch/": "/pitch.html"
   },
   "metadata": {
     "link": "https://github.com/himicos/Trustea",
