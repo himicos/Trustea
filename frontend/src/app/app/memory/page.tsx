@@ -46,13 +46,12 @@ export default function MemoryPage() {
   }, []);
 
   const isLive = !!data && !data.demo && data.memories.length > 0;
-  // In demo mode, when there's no real recall (new trust / no agent cycles yet)
-  // we show rich seed memories that look like a 5-year-old trust's history.
-  // Production mode keeps the small placeholder set.
-  const fallback = demo ? [...DEMO_RECALL_MEMORIES] : FALLBACK_MEMORIES;
+  const noAccess = !account || myTrustIds.length === 0;
+  // Seeded memories only when the visitor has no trust to recall from — never
+  // leaked onto an authenticated wallet's view, even in demo mode.
+  const fallback = noAccess ? (demo ? [...DEMO_RECALL_MEMORIES] : FALLBACK_MEMORIES) : [];
   const memories = isLive ? data.memories : fallback;
   const namespaces = new Set(memories.map((m) => m.namespace));
-  const noAccess = !account || myTrustIds.length === 0;
 
   return (
     <div className="animate-fade-up">

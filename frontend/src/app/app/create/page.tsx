@@ -253,7 +253,23 @@ export default function CreateTrustPage() {
 
       // ── Tx 2: beneficiaries, rules, DMS, funding — one PTB ──
       const validBens = beneficiaries.filter((b) => b.address.trim());
-      const validRules = rules.filter(
+
+      // Auto-translate any rule the user typed but didn't manually translate.
+      // Prevents silent rule-drop if someone skipped clicking the sparkle button.
+      const rulesWithTranslation = await Promise.all(
+        rules.map(async (r) => {
+          if (r.translation || !r.text.trim()) return r;
+          try {
+            const translation = isDemoMode()
+              ? getDemoRuleTranslation(r.text)
+              : await translateRule.mutateAsync(r.text);
+            return { ...r, translation };
+          } catch {
+            return r;
+          }
+        }),
+      );
+      const validRules = rulesWithTranslation.filter(
         (r) => r.translation && validBens[r.beneficiaryIndex] && r.translation.rule.amount > 0,
       );
       const validActivators = dmsActivators.filter(Boolean);
