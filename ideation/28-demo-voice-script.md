@@ -1,258 +1,264 @@
-# Demo Voice-Over Script — Sui Overflow 2026
+# Demo Voice-Over Script — Sui Overflow 2026, Walrus Track
 
-**Total runtime: 5:00** (pitch 2:00 + demo 3:00)
-**Recording**: voice + screen capture
-**Read pace**: ~140 words per minute (conversational, not rushed)
+**Total runtime: 5:00** (pitch 2:00 + live demo 3:00)
+**Recording**: Loom or QuickTime · 1080p · 30fps · mic only (no face cam)
+**Pace**: ~140 wpm (conversational, not rushed)
+**Tone**: sober funded-startup — confident, no defensive framing
 
-Each line = roughly 1 breath. `[stage]` notes are not spoken.
+`[stage]` notes are not spoken.
+
+---
+
+## Pre-flight (5 minutes before recording)
+
+1. **Top up `~/Desktop/will.txt`** (used in Seal docs demo):
+   ```bash
+   echo "Last will and testament — demo, $(date -u +%Y-%m-%d). If you can read this, Seal decryption worked end-to-end on Walrus." > ~/Desktop/will.txt
+   ```
+
+2. **Open these tabs in fresh Chrome window** (no extensions visible, no dev tools):
+   - Tab 1: https://trustea.fawesome.dev/?demo=1 (landing)
+   - Tab 2: https://trustea.fawesome.dev/app/?demo=1 (dapp)
+   - Tab 3: https://trustea.fawesome.dev/pitch (pitch deck)
+   - Tab 4: https://testnet.suivision.xyz/package/0xa3e912b4d4be96e1206bd76cdadb512fe151b9dfd6921bd9afc9be1d97a8487a (proof; will open via LIVE pill in demo, keep tab handy)
+
+3. **Seed burner wallet** in Tab 2 console:
+   ```js
+   localStorage.setItem('trustea-burner','1')
+   localStorage.setItem('trustea-burner-key','<PASTE_BURNER_KEY_FROM_LOCAL_NOTES>')
+   localStorage.setItem('trustea-onboarded','1')
+   location.reload()
+   ```
+   Then **Connect Wallet → Trustea Burner (Dev)** — confirm address chip shows `0x645e…1387` in sidebar before recording.
+
+4. **Pre-warm chunk cache**: open `/app/create`, `/app/trust/?id=0x99ffbcbf295d6cd7ae55b74765e196c7907a54bc1bde4feaf3d29fcb46af1919`, `/app/memory` once each so JS chunks are cached. Close those tabs after.
+
+5. **Press `E` once in Tab 3** (pitch deck) — explainer mode badge appears bottom-right.
+
+6. **Status checks** (paste into terminal):
+   ```bash
+   curl -s http://147.45.240.145:9007/health
+   curl -s -o /dev/null -w "%{http_code}\n" https://trustea.fawesome.dev/
+   ```
+   Both should return `200` / `has_groq:true`.
+
+7. **Quiet the desk**: DND on, Slack/Telegram closed, headphones unplugged (Bluetooth audio glitches mid-take), phone face down.
 
 ---
 
 ## PART 1 — Pitch (2:00)
 
-> Open `~/Trustea/pitch.html`. Press **E** to enter explainer mode. Begin recording when slide 1 (cover) is active.
+> Switch to Tab 3, full-screen, press `E` confirm explainer mode. Begin recording.
 
-### Slide 1 · Cover (0:00 → 0:15) — 15s
-
-[hold on cover for 2s, then speak]
+### Slide 1 · Cover (0:00 → 0:15)
 
 > *"This is trustea — an AI trustee with decades-long memory, powered by Walrus."*
 
-> *"You write rules in plain English. The AI remembers every decision. The contract enforces them. Forever."*
-
-[press → for slide 2]
-
-### Slide 2 · Problem (0:15 → 0:40) — 25s
-
-> *"Thirteen trillion dollars sits in US private trusts today."*
-
-> *"Administering them costs fifteen to thirty thousand dollars a year on a one-million dollar trust. That's two percent of assets — every year, forever."*
-
-> *"Why? Because the layer between the grantor and the beneficiary is still paper, phone calls, and lawyer interpretation."*
-
-> *"On a five-million dollar trust over thirty years, that's three hundred ninety thousand dollars in admin fees alone."*
+> *"You write rules in plain English. The contract enforces them. Forever."*
 
 [press →]
 
-### Slide 3 · Solution (0:40 → 1:00) — 20s
+### Slide 2 · Problem (0:15 → 0:35)
 
-> *"Trustea replaces that layer with an AI trustee that remembers every decision forever."*
+> *"Thirteen trillion dollars sits in US private trusts."*
 
-> *"The grantor writes rules in English. Our AI translates them into on-chain logic. A Sui Move contract executes them. Every decision is encrypted on Walrus, and the human keeps a forty-eight hour veto on every action the AI proposes."*
+> *"Administering them costs up to thirty thousand a year — every year, forever. The layer between grantor and beneficiary is still paper and phone calls."*
 
-[press →]
-
-### Slide 4 · How it works (1:00 → 1:20) — 20s
-
-> *"Three steps."*
-
-> *"One — you write the rule. Two — the AI trustee monitors twenty-four seven, proposes distributions, and you veto if needed. Three — every action executes on-chain and gets encrypted on Walrus via MemWal. Reconstructable fifty years from now."*
+> *"On a five-million dollar trust, that's nearly four hundred thousand in admin fees over thirty years."*
 
 [press →]
 
-### Slide 5 · Why memory matters (1:20 → 1:40) — 20s
+### Slide 3 · Solution (0:35 → 0:50)
 
-> *"This is what makes trustea different."*
+> *"Trustea replaces that layer."*
 
-> *"In year one, the agent is cold-start — decisions are mechanical. By year five, after sixty plus decisions, the agent recalls every prior cycle. Before proposing anything new, it asks itself: have I seen this pattern before?"*
-
-> *"The memory loop is what makes the trustee smarter over decades. That's the Walrus moment."*
+> *"Describe the whole trust in one paragraph — AI fills every step. A Move contract executes it. Every decision encrypted on Walrus. You keep a forty-eight hour veto on every AI action."*
 
 [press →]
 
-### Slide 6 · Architecture (1:40 → 1:55) — 15s
+### Slide 4 · How it works (0:50 → 1:05)
 
-> *"Four primitives. Move is the source of truth. Walrus stores documents and logs. Seal handles identity-based encryption — only the grantor and beneficiaries decrypt. And MemWal closes the feedback loop — every decision teaches the next."*
-
-> *"Nothing is held by us. Every layer is verifiable on Sui."*
+> *"Three steps. Describe the trust. The AI monitors twenty-four seven and proposes distributions. Every action executes on-chain; every decision recorded on Walrus via MemWal — reconstructable fifty years from now."*
 
 [press →]
 
-### Slide 7 · Proof (1:55 → 2:00) — 5s
+### Slide 5 · Why memory matters (1:05 → 1:25)
 
-> *"Not a prototype. Six modules, thirty-three tests passing, deployed on Sui testnet right now. Let me show you."*
+> *"Year one — the agent is cold. By year five, after sixty-plus cycles, it recalls every prior decision before proposing anything new."*
 
-[Stop pitch. Switch to live demo browser. Begin Part 2.]
+> *"The memory loop is what makes the trustee smarter over time. That's the Walrus moment."*
+
+[press →]
+
+### Slide 6 · Architecture (1:25 → 1:45)
+
+> *"Four primitives. Move is the source of truth. Walrus stores documents and logs. Seal encrypts — only grantor and beneficiaries can decrypt. MemWal closes the loop — every decision teaches the next."*
+
+> *"Nothing held by us. Everything verifiable on Sui."*
+
+[press →]
+
+### Slide 7 · Proof (1:45 → 2:00)
+
+> *"Five Move modules, thirty-three tests passing, live on Sui testnet."*
+
+> *"Let me show you what one paragraph of English does."*
+
+[Stop pitch. Switch to Tab 2. Begin Part 2.]
 
 ---
 
-## PART 2 — Live demo (2:00 → 5:00)
+## PART 2 — Live demo (3:00)
 
-> URL: **https://trustea.fawesome.dev** — wallet pre-seeded (burner). Have `~/Desktop/will.txt` ready.
+> Tab 2 (dapp). Burner pre-connected. `~/Desktop/will.txt` ready.
 
-### 0:00 → 0:20 — Landing & live proof (Tab 1)
+### 0:00 → 0:20 — Landing & live proof
 
-[On landing page, scroll once]
+[Switch to Tab 1, scroll once to show Memory section, then back to top]
 
-> *"Walrus-hosted. HTTPS-signed. Live."*
+> *"Walrus-hosted. HTTPS-signed. The whole site lives on Walrus testnet — site object, JS, CSS, fonts, all of it."*
 
-> *"The green pill at the top isn't decoration — it links directly to the deployed contract on Sui testnet. Click it and you can verify every transaction yourself."*
+[Click the **LIVE — Deployed on Sui Testnet** pill at top]
 
-[Click the LIVE pill — Tab 4 opens with SuiVision package page. Spend 2 seconds looking, then close that tab.]
+> *"That pill links straight to the contract. Real package on chain. You can verify every transaction yourself."*
 
-[Back on landing, scroll past Why Memory Matters section briefly]
-
-> *"This is the section we just walked through — the agent's memory compounds year over year."*
+[Tab 4 opens with SuiVision — 2 seconds, close it, back to landing]
 
 [Click **Open App** in nav]
 
-### 0:20 → 0:50 — App dashboard (Tab 2)
+### 0:20 → 0:35 — Dashboard
 
-[Dashboard loads. Hero card visible: TVL, Trusts, Beneficiaries]
+[Dashboard loads. TVL hero, sidebar with existing trust]
 
-> *"I'm connected with a burner wallet that already has one trust."*
+> *"Connected with a burner wallet that already has one trust — the demo I ran yesterday. Total value locked, beneficiaries, next unlock. Standard fiduciary dashboard."*
 
-> *"Total value locked, number of trusts, beneficiaries, and on the right — next unlock countdown."*
-
-[Hover briefly over Walrus Live Demo Trust row]
-
-> *"Now let me create a new one. This is the hero flow."*
+> *"Now let me create a new one. Watch this."*
 
 [Click **+ New Trust**]
 
-### 0:50 → 1:50 — Create wizard (the AI moment)
+### 0:35 → 1:50 — Quick Start: trust from one paragraph
 
-[Step 1 Basics]
+[Wizard step 1 opens with Quick Start banner at top]
 
-> *"Name it — Demo Trust. Description — AI-managed trust for the demo."*
+> *"Here's the part no one else does. I'm not going to fill six steps by hand."*
 
-[Fill, Continue. Step 2 skip with Continue. Step 3 Beneficiaries]
+[Click the textarea inside Quick Start banner. Type slowly:]
 
-> *"Skip roles for brevity. Add a beneficiary — Alice, paste her address, allocate point one SUI."*
+> **"Set up a trust for my daughter Alice. Give her 100 SUI monthly while she is enrolled in university. Full inheritance when she turns 30. Fund with 0.05 SUI."**
 
-[Continue → Step 4 Rules]
+[Click **Generate trust** button]
 
-> *"This is the hero moment. I'm not picking from a dropdown. I'm not coding. I'm writing in plain English."*
+[Wait 1-2s — AI summary card appears: Applied — 1 beneficiaries · 2 rules, confidence bar ~95%]
 
-[Type slowly into the rule field:]
+> *"Two seconds. The AI filled the name, the description, my beneficiary, two on-chain rules, the initial deposit — every step of the wizard. Confidence ninety-five percent."*
 
-> **"Release 100 SUI to Alice every month while she is enrolled in university"**
+[Click through Continue, Continue, Continue — show how each step is already pre-filled. Pause briefly on Step 3 Beneficiaries to point at the Alice card, paste burner address into Wallet Address field since AI couldn't guess it]
 
-[Press Enter or sparkle button. Wait 1-2 seconds for Groq.]
+> *"AI left the wallet address empty because I didn't give one — fair. I'll drop the address in. I could also click Invite link and send a share URL to Alice if she's not connected yet."*
 
-> *"The translator runs against Groq's Llama seventy billion model. It returns structured on-chain logic in about a second."*
+[Continue → skip DMS step → land on Step 6 Fund]
 
-[Card appears: ruleType periodic, 100 SUI, confidence ~90%]
+[Deposit field already shows 0.05 SUI from AI]
 
-> *"It correctly identified this as a periodic rule, monthly cadence, conditioned on a university enrollment credential. Confidence ninety percent. If it were lower, I'd see explicit warnings before deploying."*
+> *"Initial deposit pre-filled too. Deploy."*
 
-[Continue → skip safety → Step 6 Fund]
+[Click **Deploy Trust**. Two wallet signatures fire (burner is silent — no popup). Wait for redirect.]
 
-> *"Deposit zero point zero two SUI to test. Deploy Trust."*
+> *"Two signatures. The first creates the trust object. The second wires up the beneficiary, both rules, and the deposit in a single programmable transaction block. Watch."*
 
-[Click Deploy. Two wallet signatures auto-fire (burner). Wait for redirect.]
+### 1:50 → 2:25 — Trust page · AgentRecallCard · Seal docs
 
-> *"Two signatures. The first creates the trust object. The second wires up beneficiaries, the rule, the deposit — all in one programmable transaction block. Watch."*
+[Lands on `/app/trust?id=...`]
 
-### 1:50 → 2:25 — Trust page + AgentRecallCard + Seal docs
+> *"Live trust. Active. Zero point zero five SUI. One beneficiary. Two rules — exactly what I described."*
 
-[Lands on /app/trust?id=...]
+[Scroll Overview tab down to **Agent's working memory** card]
 
-> *"Live data. Trust deployed. Active. Zero point zero two SUI balance."*
+> *"And this is the Walrus track moment. Agent's working memory. Before its next cycle, this is what the AI trustee recalls from Walrus via MemWal — scoped to this trust only. The memory grows with every decision."*
 
-[Scroll down to Overview tab content — Trust Details, Beneficiaries, then Agent's Working Memory card]
+[Click **Documents** tab]
 
-> *"And here's the Walrus track in one widget."*
+> *"Now the storage layer. Real document upload."*
 
-> *"Agent's Working Memory. Before its next cycle, this is what the AI trustee will recall from Walrus via MemWal. Right now it's empty — this trust is brand new — but every cycle from now on will write back here. Per-trust scoped. Seal-encrypted."*
+[Click **Upload**, choose `~/Desktop/will.txt`. Status text streams]
 
-[Click Documents tab]
+> *"Encrypting with Seal in my browser. Storing on Walrus. Recording the reference on-chain. Three different infrastructure layers, one upload."*
 
-> *"Now the Walrus storage layer. Real document upload."*
+[Document 1 card appears with Walrus blob ID. Click **Decrypt**, sign personal message popup]
 
-[Click Upload, choose ~/Desktop/will.txt. Status text streams.]
+> *"Decrypt asks me to sign a session key, the Seal key server simulates the on-chain seal_approve to verify I'm authorized, only then releases the key."*
 
-> *"Encrypting with Seal in my browser. Storing on Walrus. Recording the reference on-chain."*
+[File downloads to ~/Downloads/will.txt]
 
-[Document 1 appears with Walrus blob ID]
+> *"Byte-identical round trip."*
 
-> *"Three different infrastructure layers, one upload. Now decrypt."*
+### 2:25 → 2:55 — Beneficiary · Activity · Memory
 
-[Click Decrypt. Sign personal message popup. File downloads.]
+[Click **Self** in sidebar under Beneficiary section]
 
-> *"Decrypt asks me to sign a session key, the Seal key server simulates the on-chain seal_approve to verify I'm authorized, only then it releases the decryption key. Byte-identical round trip."*
+> *"Same wallet, viewed as a beneficiary. Soulbound NFT — non-transferable. Allocation, conditions, parent trust. I can request distributions on-chain — no phone call."*
 
-[Quickly open the downloaded will.txt to show plaintext if recording allows.]
+[Click **Activity** in sidebar]
 
-### 2:25 → 2:50 — Beneficiary + activity + memory at scale
+> *"Every event the contract emitted. Filtered to My Trusts. Each one links to its transaction on SuiVision. This is the audit trail traditional trusts can't give you."*
 
-[Click **Self** in sidebar under Beneficiary]
+[Click **Memory** in sidebar]
 
-> *"Switching roles. Same wallet, viewed as a beneficiary."*
+> *"And Memory. What the agent recalls across cycles. As more trusts run more cycles, this becomes institutional knowledge — Seal-encrypted on Walrus, scoped to my trusts only."*
 
-> *"Soulbound NFT — non-transferable. Allocation, conditions, parent trust. And I can request a distribution on-chain — no phone call, no email."*
-
-[Click Activity in sidebar]
-
-> *"Activity feed. Filtered to My Trusts. Every event the contract emitted — each one links to its transaction on SuiVision."*
-
-[Click Memory in sidebar]
-
-> *"And Memory. This is the compounding part. As more trusts run more cycles, this page becomes the agent's institutional knowledge — encrypted on Walrus, scoped to my trusts only. Privacy by design."*
-
-### 2:50 → 3:00 — Close
+### 2:55 → 3:00 — Close
 
 [Scroll to footer with Sui logo + Walrus Track badge]
 
 > *"trustea. Built on Sui. Powered by Walrus, Seal, and MemWal."*
 
-> *"This is what AI agents look like when they finally have memory that lasts. Thanks."*
-
-[End recording.]
+[End recording]
 
 ---
 
-## Demo polish: things that should work without thinking
+## Recovery one-liners (memorize)
 
-Before pressing record:
-
-- [ ] Burner pre-connected (`localStorage` set, page reloaded once, Trustea Burner clicked)
-- [ ] Deployer wallet has ≥ 0.1 SUI for any tx fallback
-- [ ] `~/Desktop/will.txt` exists with one-liner content
-- [ ] Groq proxy reachable (`curl http://147.45.240.145:9007/health` → has_groq:true)
-- [ ] Pitch in explainer mode (press E once)
-- [ ] Close all browser dev tools and notification overlays
-- [ ] Bluetooth headphones disconnected (audio cuts mid-recording)
-- [ ] Phone on Do Not Disturb
-- [ ] Screen recording at 1920×1080, audio source = mic (not system)
-
-## Recovery one-liners (memorize these)
-
-| If it fails | Say |
+| If it fails mid-recording | Say |
 |---|---|
-| Groq slow >3s | *"Groq is propagating across regions — normally sub-second."* |
+| Groq slow >3s | *"Groq is propagating across regions — usually sub-second."* |
 | Walrus upload slow | *"Walrus is replicating across storage nodes."* |
-| Wallet sig hangs | [refresh page, burner reconnects] *"On testnet sometimes the wallet needs a nudge."* |
-| Deploy fails | [skip, narrate previously created trust] *"For brevity I'll switch to a trust we created earlier — fully on-chain."* |
-| Decrypt fails | *"Seal key server has a short cache — let me retry."* [retry once] |
+| Wallet sig hangs | [refresh] *"Testnet sometimes needs a nudge."* |
+| Deploy errors out | [open existing trust] *"For brevity I'll switch to the trust we created earlier — fully on-chain."* |
+| Decrypt fails | [retry once] *"Seal key server has a short cache — let me retry."* |
+| Quick Start returns empty | [fall back to manual wizard, narrate it] *"Let me fill these by hand — same result, just slower."* |
 
-## What NOT to say
+## What NOT to say (each kills a star)
 
 - ❌ "I think it should work"
 - ❌ "Hopefully this loads"
 - ❌ "Bear with me"
 - ❌ "Actually, let me show that again"
-- ❌ "This is just a demo, in production..."
+- ❌ "It's just a demo"
+- ❌ "Not a prototype" (sober tone — let live testnet speak)
 
-Each one is a confidence killer. If something breaks, narrate forward, don't apologize.
-
----
-
-## Pitch deck adjustments before recording
-
-If you have 5 minutes before the timer runs out:
-
-1. Open pitch.html, press E for explainer mode
-2. Walk through every slide once silently — make sure animations finish before reading
-3. Note any text that wraps weirdly on your screen
-4. Test the explainer order (0→1→2→4→5→8→9→11) by pressing → 7 times
+If something breaks, **narrate forward**. Apologies cost credibility.
 
 ---
 
-## File locations
+## URLs for submission
 
-- This script: `~/Trustea/ideation/28-demo-voice-script.md`
-- Pitch deck: `~/Trustea/pitch.html`
-- Demo recording flow (longer ops doc): `~/Trustea/ideation/27-demo-recording-flow.md`
-- Walrus URL: https://trustea.fawesome.dev
-- Test contract on SuiVision: https://testnet.suivision.xyz/package/0xa3e912b4d4be96e1206bd76cdadb512fe151b9dfd6921bd9afc9be1d97a8487a
+- App + landing + pitch: **https://trustea.fawesome.dev/** (single Walrus site)
+- Pitch deck directly: **https://trustea.fawesome.dev/pitch**
+- Contract on SuiVision: https://testnet.suivision.xyz/package/0xa3e912b4d4be96e1206bd76cdadb512fe151b9dfd6921bd9afc9be1d97a8487a
+- Walrus site object: https://testnet.suivision.xyz/object/0x47019898a51e7416d3d7c38ff1aae6624eb6e9f9c1907ab564d246622df8c50c
+- GitHub: https://github.com/himicos/Trustea
+
+## Demo address book
+
+- Deployer / grantor wallet: `0xe50e03c195bcef64ee2cdfe3cea37f4dba6a65a05e8b3d529ff093a446558b56`
+- Recording burner: `0x645ec801f925f1865f9049f887486da77d3d6f50f63f740fbb281dcb47621387`
+- Burner private key (localStorage only): `<PASTE_BURNER_KEY_FROM_LOCAL_NOTES>`
+- Existing demo trust (backup if create flow fails): `0x99ffbcbf295d6cd7ae55b74765e196c7907a54bc1bde4feaf3d29fcb46af1919`
+
+## Loom recording tips
+
+- **Cmd+Shift+L** start/stop (faster than UI click — saves the first second of audio)
+- Enable 3-second countdown in Loom settings → gives a breath before the first word
+- **Camera off** — keeps focus on the screen
+- Two separate Looms (pitch + demo) if free tier — splits the 5-min limit
+- After upload, Loom auto-generates chapter timestamps; paste both URLs into submission with "Chapter timestamps in description" note
