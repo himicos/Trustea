@@ -5,6 +5,7 @@ const SS_KEY = "trustea-demo-mode";
 
 export function isDemoMode(): boolean {
   if (typeof window === "undefined") return false;
+  if (window.location.hostname === "trustea.fawesome.dev") return true;
   const params = new URLSearchParams(window.location.search);
   if (params.get("demo") === "1") {
     try {
