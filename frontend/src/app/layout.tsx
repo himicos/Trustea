@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono, DM_Serif_Display } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -23,9 +23,22 @@ const dmSerif = DM_Serif_Display({
 });
 
 export const metadata: Metadata = {
-  title: "Trustea — On-chain Trust Fund Infrastructure",
+  title: "trustea — AI trustee on Sui",
   description:
-    "Programmable trust fund administration on Sui. Write rules in plain English, AI enforces them on-chain.",
+    "Write trust rules in plain English. AI enforces them on-chain. Powered by Walrus, Seal, MemWal.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#10B981",
 };
 
 export default function RootLayout({
